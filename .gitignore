@@ -1,0 +1,54 @@
+# Environment variables (sensitive data)
+.env
+*.env
+.env.*
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build outputs
+dist/
+build/
+*.egg
+
+# Logs
+*.log
+logs/
+
+# Docker volumes data
+postgres_data/
+prometheus_data/
+
+# SQLite databases (may contain sensitive data)
+*.db
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Open WebUI specific
+open-webui/backend/data/
+open-webui/backend/uploads/
+
+# LiteLLM specific
+litellm/postgres_data/
