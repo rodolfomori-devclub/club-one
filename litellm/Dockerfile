@@ -19,8 +19,9 @@ RUN python -m pip install build
 # Copy the current directory contents into the container at /app
 COPY . .
 
-# Build Admin UI
-RUN chmod +x docker/build_admin_ui.sh && ./docker/build_admin_ui.sh
+# Fix line endings (CRLF to LF) and build Admin UI
+RUN sed -i 's/\r$//' docker/*.sh && \
+    chmod +x docker/build_admin_ui.sh && ./docker/build_admin_ui.sh
 
 # Build the package
 RUN rm -rf dist/* && python -m build
@@ -64,8 +65,9 @@ RUN pip install *.whl /wheels/* --no-index --find-links=/wheels/ && rm -f *.whl 
 RUN find /usr/lib -type f -path "*/tornado/test/*" -delete && \
     find /usr/lib -type d -path "*/tornado/test" -delete
 
-# Install semantic_router and aurelio-sdk using script
-RUN chmod +x docker/install_auto_router.sh && ./docker/install_auto_router.sh
+# Fix line endings and install semantic_router and aurelio-sdk using script
+RUN sed -i 's/\r$//' docker/*.sh && \
+    chmod +x docker/install_auto_router.sh && ./docker/install_auto_router.sh
 
 # Generate prisma client
 RUN prisma generate
