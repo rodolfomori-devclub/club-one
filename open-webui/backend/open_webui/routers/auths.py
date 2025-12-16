@@ -38,6 +38,8 @@ from open_webui.env import (
     WEBUI_AUTH_SIGNOUT_REDIRECT_URL,
     ENABLE_INITIAL_ADMIN_SIGNUP,
     SRC_LOG_LEVELS,
+    EXTERNAL_AUTH_API_URL,
+    EXTERNAL_AUTH_ENABLED,
 )
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse, Response, JSONResponse
@@ -500,6 +502,78 @@ async def ldap_auth(request: Request, response: Response, form_data: LdapForm):
 
 
 ############################
+# External Authentication Helper
+############################
+
+
+async def authenticate_external_user(request: Request, email: str, password: str):
+    """
+    Authenticate user via external API and create/update local user.
+    """
+    try:
+        async with ClientSession() as session:
+            # Step 1: Call external login endpoint
+            async with session.post(
+                f"{EXTERNAL_AUTH_API_URL}/login",
+                json={"username": email, "password": password},
+                timeout=10
+            ) as login_response:
+                if login_response.status != 201 and login_response.status != 200:
+                    log.warning(f"External auth failed for {email}: {login_response.status}")
+                    log.warning(f"External auth failed for {email}")
+                    return None
+
+                login_data = await login_response.json()
+                external_token = login_data.get("token")
+
+                if not external_token:
+                    return None
+
+            # Step 2: Call /me to get user data
+            async with session.get(
+                f"{EXTERNAL_AUTH_API_URL}/me",
+                headers={"Authorization": f"Bearer {external_token}"},
+                timeout=10
+            ) as me_response:
+                if me_response.status != 200:
+                    log.warning(f"External /me failed for {email}")
+                    return None
+
+                user_data = await me_response.json()
+
+        # Step 3: Create or update user in local database
+        user_email = user_data.get("email", email).lower()
+        user_name = user_data.get("name", user_email)
+
+        existing_user = Users.get_user_by_email(user_email)
+
+        if existing_user:
+            # Update existing user (optional: sync name, etc.)
+            return existing_user
+        else:
+            # Create new user with random password (prevents local login bypass)
+            random_password = str(uuid.uuid4())
+            hashed_password = get_password_hash(random_password)
+
+            # Use existing signup logic or direct insert
+            new_user = Auths.insert_new_auth(
+                email=user_email,
+                password=hashed_password,
+                name=user_name,
+                role="user"  # Always regular user from external auth
+            )
+
+            if new_user:
+                return Users.get_user_by_id(new_user.id)
+
+        return None
+
+    except Exception as e:
+        log.error(f"External authentication error: {e}")
+        return None
+
+
+############################
 # SignIn
 ############################
 
@@ -565,24 +639,50 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
                 admin_email.lower(), lambda pw: verify_password(admin_password, pw)
             )
     else:
-        if signin_rate_limiter.is_limited(form_data.email.lower()):
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=ERROR_MESSAGES.RATE_LIMIT_EXCEEDED,
+        # Check if user exists and is admin - use local auth
+        existing_user = Users.get_user_by_email(form_data.email.lower())
+
+        if existing_user and existing_user.role == "admin":
+            # Admin user - use local authentication
+            if signin_rate_limiter.is_limited(form_data.email.lower()):
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=ERROR_MESSAGES.RATE_LIMIT_EXCEEDED,
+                )
+
+            password_bytes = form_data.password.encode("utf-8")
+            if len(password_bytes) > 72:
+                log.info("Password too long, truncating to 72 bytes for bcrypt")
+                password_bytes = password_bytes[:72]
+                form_data.password = password_bytes.decode("utf-8", errors="ignore")
+
+            user = Auths.authenticate_user(
+                form_data.email.lower(), lambda pw: verify_password(form_data.password, pw)
             )
 
-        password_bytes = form_data.password.encode("utf-8")
-        if len(password_bytes) > 72:
-            # TODO: Implement other hashing algorithms that support longer passwords
-            log.info("Password too long, truncating to 72 bytes for bcrypt")
-            password_bytes = password_bytes[:72]
+        elif EXTERNAL_AUTH_ENABLED and EXTERNAL_AUTH_API_URL:
+            # Non-admin or new user - use external authentication
+            user = await authenticate_external_user(
+                request, form_data.email, form_data.password
+            )
 
-            # decode safely — ignore incomplete UTF-8 sequences
-            form_data.password = password_bytes.decode("utf-8", errors="ignore")
+        else:
+            # Fallback to original local auth if external not configured
+            if signin_rate_limiter.is_limited(form_data.email.lower()):
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=ERROR_MESSAGES.RATE_LIMIT_EXCEEDED,
+                )
 
-        user = Auths.authenticate_user(
-            form_data.email.lower(), lambda pw: verify_password(form_data.password, pw)
-        )
+            password_bytes = form_data.password.encode("utf-8")
+            if len(password_bytes) > 72:
+                log.info("Password too long, truncating to 72 bytes for bcrypt")
+                password_bytes = password_bytes[:72]
+                form_data.password = password_bytes.decode("utf-8", errors="ignore")
+
+            user = Auths.authenticate_user(
+                form_data.email.lower(), lambda pw: verify_password(form_data.password, pw)
+            )
 
     if user:
 
