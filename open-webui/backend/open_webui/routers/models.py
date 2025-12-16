@@ -1,5 +1,6 @@
 from typing import Optional
 import io
+import os
 import base64
 import json
 import asyncio
@@ -29,7 +30,8 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from open_webui.utils.auth import get_admin_user, get_verified_user
 from open_webui.utils.access_control import has_access, has_permission
-from open_webui.config import BYPASS_ADMIN_ACCESS_CONTROL, STATIC_DIR
+from open_webui.config import BYPASS_ADMIN_ACCESS_CONTROL,STATIC_DIR
+
 
 log = logging.getLogger(__name__)
 
@@ -288,33 +290,75 @@ async def get_model_by_id(id: str, user=Depends(get_verified_user)):
 ###########################
 
 
+
+# Provider detection patterns for model profile images
+PROVIDER_PATTERNS = {
+    "openai": ["gpt-", "o1-", "o3-", "chatgpt-", "openai/", "dall-e-"],
+    "anthropic": ["claude-", "anthropic/"],
+    "google": ["gemini-", "google/", "gemini/"],
+    "perplexity": ["perplexity/"],
+    "deepseek": ["deepseek-", "deepseek/"],
+    "xai": ["grok-", "xai/"],
+    "meta": ["llama-", "meta/"],
+    "mistral": ["mistral-", "mixtral-", "mistral/"],
+    "cohere": ["command-", "cohere/"],
+}
+
+
+def _get_provider_from_model_id(model_id: str) -> str:
+    """Detect the provider from a model ID based on prefix patterns."""
+    model_id_lower = model_id.lower()
+    for provider, patterns in PROVIDER_PATTERNS.items():
+        for pattern in patterns:
+            if pattern in model_id_lower.lower():
+                return provider
+    print(f"PROVIDER NOT FOUND: {model_id_lower}")
+    return None
+
+
+def _get_provider_logo_path(provider: str) -> str:
+    """Get the logo file path for a provider. Returns None if logo doesn't exist."""
+    if provider:
+        logo_path = f"{STATIC_DIR}/icons/{provider}.svg"
+        if os.path.exists(logo_path):
+            return logo_path
+        print(f"PROVIDER LOGO PATH NOT FOUND: {logo_path}")
+    return None
+
+
 @router.get("/model/profile/image")
 async def get_model_profile_image(id: str, user=Depends(get_verified_user)):
+    # Check local database for custom model with profile image
     model = Models.get_model_by_id(id)
-    if model:
-        if model.meta.profile_image_url:
-            if model.meta.profile_image_url.startswith("http"):
-                return Response(
-                    status_code=status.HTTP_302_FOUND,
-                    headers={"Location": model.meta.profile_image_url},
+    if model and model.meta.profile_image_url:
+        if model.meta.profile_image_url.startswith("http"):
+            return Response(
+                status_code=status.HTTP_302_FOUND,
+                headers={"Location": model.meta.profile_image_url},
+            )
+        elif model.meta.profile_image_url.startswith("data:image"):
+            try:
+                header, base64_data = model.meta.profile_image_url.split(",", 1)
+                image_data = base64.b64decode(base64_data)
+                image_buffer = io.BytesIO(image_data)
+
+                return StreamingResponse(
+                    image_buffer,
+                    media_type="image/png",
+                    headers={"Content-Disposition": "inline; filename=image.png"},
                 )
-            elif model.meta.profile_image_url.startswith("data:image"):
-                try:
-                    header, base64_data = model.meta.profile_image_url.split(",", 1)
-                    image_data = base64.b64decode(base64_data)
-                    image_buffer = io.BytesIO(image_data)
+            except Exception as e:
+                pass
 
-                    return StreamingResponse(
-                        image_buffer,
-                        media_type="image/png",
-                        headers={"Content-Disposition": "inline; filename=image.png"},
-                    )
-                except Exception as e:
-                    pass
+    # Provider logo fallback - works for both DB models and LiteLLM models
+    provider = _get_provider_from_model_id(id)
+    logo_path = _get_provider_logo_path(provider)
+    print(f"LOGO PATH: {logo_path} PROVIDER: {provider}")
+    if logo_path:
+        return FileResponse(logo_path, media_type="image/svg+xml")
 
-        return FileResponse(f"{STATIC_DIR}/favicon.png")
-    else:
-        return FileResponse(f"{STATIC_DIR}/favicon.png")
+    # Ultimate fallback
+    return FileResponse(f"{STATIC_DIR}/favicon.png")
 
 
 ############################
