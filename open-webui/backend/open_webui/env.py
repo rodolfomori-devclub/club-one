@@ -112,11 +112,11 @@ for source in log_sources:
 
 log.setLevel(SRC_LOG_LEVELS["CONFIG"])
 
-WEBUI_NAME = os.environ.get("WEBUI_NAME", "Open WebUI")
-if WEBUI_NAME != "Open WebUI":
-    WEBUI_NAME += " (Open WebUI)"
+WEBUI_NAME = os.environ.get("WEBUI_NAME", "ClubHub")
+if WEBUI_NAME != "ClubHub":
+    WEBUI_NAME = WEBUI_NAME
 
-WEBUI_FAVICON_URL = "https://openwebui.com/favicon.png"
+WEBUI_FAVICON_URL = "https://clubhub.devclub.com.br/favicon.png"
 
 TRUSTED_SIGNATURE_KEY = os.environ.get("TRUSTED_SIGNATURE_KEY", "")
 
@@ -373,6 +373,13 @@ ENABLE_REALTIME_CHAT_SAVE = (
 )
 
 ENABLE_QUERIES_CACHE = os.environ.get("ENABLE_QUERIES_CACHE", "False").lower() == "true"
+
+####################################
+# External Authentication
+####################################
+
+EXTERNAL_AUTH_API_URL = os.environ.get("EXTERNAL_AUTH_API_URL", "")
+EXTERNAL_AUTH_ENABLED = os.environ.get("EXTERNAL_AUTH_ENABLED", "false").lower() == "true"
 
 ####################################
 # REDIS
