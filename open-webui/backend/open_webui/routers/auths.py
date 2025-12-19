@@ -40,6 +40,7 @@ from open_webui.env import (
     SRC_LOG_LEVELS,
     EXTERNAL_AUTH_API_URL,
     EXTERNAL_AUTH_ENABLED,
+    EXTERNAL_AUTH_DEFAULT_GROUP_ID,
 )
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse, Response, JSONResponse
@@ -531,7 +532,7 @@ async def authenticate_external_user(request: Request, email: str, password: str
 
             # Step 2: Call /me to get user data
             async with session.get(
-                f"{EXTERNAL_AUTH_API_URL}/me",
+                f"{EXTERNAL_AUTH_API_URL}/me?checkMbaGroup=true",
                 headers={"Authorization": f"Bearer {external_token}"},
                 timeout=10
             ) as me_response:
@@ -563,6 +564,11 @@ async def authenticate_external_user(request: Request, email: str, password: str
                 role="user"  # Always regular user from external auth
             )
 
+             # Add user to default external auth group
+            if EXTERNAL_AUTH_DEFAULT_GROUP_ID:
+                log.info(f"Adding new user {new_user.id} to external auth default group {EXTERNAL_AUTH_DEFAULT_GROUP_ID}")
+                apply_default_group_assignment(EXTERNAL_AUTH_DEFAULT_GROUP_ID, new_user.id)
+
             if new_user:
                 return Users.get_user_by_id(new_user.id)
 
@@ -571,6 +577,177 @@ async def authenticate_external_user(request: Request, email: str, password: str
     except Exception as e:
         log.error(f"External authentication error: {e}")
         return None
+
+
+############################
+# External Token Authentication
+############################
+
+
+class ExternalTokenForm(BaseModel):
+    token: Optional[str] = None
+    api_key: Optional[str] = None
+
+
+@router.post("/external/token", response_model=SessionUserResponse)
+async def external_token_auth(request: Request, response: Response, form_data: Optional[ExternalTokenForm] = None):
+    """
+    Authenticate user via external access_token.
+    Used when user is redirected from external app with token in cookie.
+
+    Token and api_key can be provided via:
+    1. Request body (form_data) - for non-httpOnly cookies read by frontend
+    2. Cookies (httpOnly) - read directly from request by backend
+    """
+    log.info(f"External token auth attempt - EXTERNAL_AUTH_ENABLED: {EXTERNAL_AUTH_ENABLED}, EXTERNAL_AUTH_API_URL: {EXTERNAL_AUTH_API_URL}")
+
+    if not EXTERNAL_AUTH_ENABLED or not EXTERNAL_AUTH_API_URL:
+        log.warning("External authentication is not enabled or API URL not configured")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="External authentication is not enabled"
+        )
+
+    try:
+        # Get token: prefer body, fallback to cookie
+        body_token = form_data.token if form_data else None
+        body_api_key = form_data.api_key if form_data else None
+
+        access_token = body_token or request.cookies.get("access_token")
+        api_key = body_api_key or request.cookies.get("api_key")
+
+        log.info(f"Token source: {'body' if body_token else 'cookie'}, API key source: {'body' if body_api_key else 'cookie'}")
+
+        if not access_token:
+            log.warning("No access_token provided in body or cookies")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No access_token provided"
+            )
+
+        # Build headers for external API request
+        external_headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+
+        # Add api_key header if available
+        if api_key:
+            external_headers["api_key"] = api_key
+            log.info("Including api_key in external API request")
+
+        log.info(f"Calling external API: {EXTERNAL_AUTH_API_URL}/me?checkMbaGroup=true")
+        async with ClientSession() as session:
+            # Validate token by calling /mba-me endpoint
+            async with session.get(
+                f"{EXTERNAL_AUTH_API_URL}/me?checkMbaGroup=true",
+                headers=external_headers,
+                timeout=10
+            ) as me_response:
+                log.info(f"External API response status: {me_response.status}")
+                if me_response.status == 403:
+                    log.warning(f"External API error response: {me_response.status} - Permission denied")
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Permission denied"
+                    )
+                if me_response.status != 200:
+                    response_text = await me_response.text()
+                    log.warning(f"External API error response: {response_text}")
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Invalid or expired token"
+                    )
+
+                user_data = await me_response.json()
+                
+                log.info(f"External API user data received: {user_data}")
+
+        # Create or get user
+        user_email = user_data.get("email", "").lower()
+        user_name = user_data.get("name", user_email)
+
+        if not user_email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No email returned from external API"
+            )
+
+        existing_user = Users.get_user_by_email(user_email)
+
+        if existing_user:
+            user = existing_user
+        else:
+            # Create new user
+            random_password = str(uuid.uuid4())
+            hashed_password = get_password_hash(random_password)
+
+            new_user = Auths.insert_new_auth(
+                email=user_email,
+                password=hashed_password,
+                name=user_name,
+                role="user"
+            )
+
+            if not new_user:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to create user"
+                )
+
+            user = Users.get_user_by_id(new_user.id)
+            # Add user to default external auth group
+            if EXTERNAL_AUTH_DEFAULT_GROUP_ID:
+                log.info(f"Adding new user {user.id} to external auth default group {EXTERNAL_AUTH_DEFAULT_GROUP_ID}")
+                apply_default_group_assignment(EXTERNAL_AUTH_DEFAULT_GROUP_ID, user.id)
+
+        # Generate Open WebUI token
+        expires_delta = parse_duration(request.app.state.config.JWT_EXPIRES_IN)
+        expires_at = None
+        if expires_delta:
+            expires_at = int(time.time()) + int(expires_delta.total_seconds())
+
+        token = create_token(data={"id": user.id}, expires_delta=expires_delta)
+
+        # Set cookie
+        response.set_cookie(
+            key="token",
+            value=token,
+            expires=(
+                datetime.datetime.fromtimestamp(expires_at, datetime.timezone.utc)
+                if expires_at else None
+            ),
+            httponly=True,
+            samesite=WEBUI_AUTH_COOKIE_SAME_SITE,
+            secure=WEBUI_AUTH_COOKIE_SECURE,
+        )
+
+        user_permissions = get_permissions(
+            user.id, request.app.state.config.USER_PERMISSIONS
+        )
+
+        return {
+            "token": token,
+            "token_type": "Bearer",
+            "expires_at": expires_at,
+            "id": user.id,
+            "email": user.email,
+            "name": user.name,
+            "role": user.role,
+            "profile_image_url": user.profile_image_url,
+            "permissions": user_permissions,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        log.error(f"External token auth error: {e}")
+        log.error(f"External token auth traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Authentication failed: {str(e)}"
+        )
 
 
 ############################
@@ -868,6 +1045,9 @@ async def signout(request: Request, response: Response):
     response.delete_cookie("token")
     response.delete_cookie("oui-session")
     response.delete_cookie("oauth_id_token")
+    # Clean up external API cookies
+    response.delete_cookie("api_key")
+    response.delete_cookie("access_token")
 
     oauth_session_id = request.cookies.get("oauth_session_id")
     if oauth_session_id:

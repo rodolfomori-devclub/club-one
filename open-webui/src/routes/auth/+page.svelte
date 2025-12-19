@@ -9,7 +9,13 @@
 	import { page } from '$app/stores';
 
 	import { getBackendConfig } from '$lib/apis';
-	import { ldapUserSignIn, getSessionUser, userSignIn, userSignUp } from '$lib/apis/auths';
+	import {
+		ldapUserSignIn,
+		getSessionUser,
+		userSignIn,
+		userSignUp,
+		externalTokenAuth
+	} from '$lib/apis/auths';
 
 	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
 	import { WEBUI_NAME, config, user, socket } from '$lib/stores';
@@ -20,6 +26,7 @@
 	import OnBoarding from '$lib/components/OnBoarding.svelte';
 	import SensitiveInput from '$lib/components/common/SensitiveInput.svelte';
 	import { redirect } from '@sveltejs/kit';
+	import { browser } from '$app/environment';
 
 	const i18n = getContext('i18n');
 
@@ -101,15 +108,51 @@
 		}
 	};
 
-	const oauthCallbackHandler = async () => {
-		// Get the value of the 'token' cookie
-		function getCookie(name) {
-			const match = document.cookie.match(
-				new RegExp('(?:^|; )' + name.replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1') + '=([^;]*)')
-			);
-			return match ? decodeURIComponent(match[1]) : null;
+	// Helper to get cookie value
+	function getCookie(name) {
+		const match = document.cookie.match(
+			new RegExp('(?:^|; )' + name.replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1') + '=([^;]*)')
+		);
+		return match ? decodeURIComponent(match[1]) : null;
+	}
+
+	const externalTokenHandler = async (): Promise<boolean> => {
+		// External auth: backend reads httpOnly cookies directly
+		// We can also pass tokens via URL params as fallback
+		console.log('[ExternalAuth] Starting external token handler');
+
+		// Check for URL parameters (optional, for non-httpOnly scenarios)
+		const tokenFromUrl = $page.url.searchParams.get('access_token');
+		const apiKeyFromUrl = $page.url.searchParams.get('api_key');
+
+		if (tokenFromUrl) {
+			console.log('[ExternalAuth] Found access_token in URL params');
 		}
 
+		try {
+			console.log(
+				'[ExternalAuth] Calling externalTokenAuth API (backend will read httpOnly cookies)...'
+			);
+			// Pass URL params if available, otherwise backend reads cookies
+			const sessionUser = await externalTokenAuth(tokenFromUrl, apiKeyFromUrl);
+			console.log('[ExternalAuth] API response:', sessionUser);
+
+			if (sessionUser) {
+				console.log('[ExternalAuth] Session user received, setting session...');
+				await setSessionUser(sessionUser, localStorage.getItem('redirectPath') || null);
+				return true;
+			} else {
+				console.log('[ExternalAuth] No session user returned from API');
+			}
+		} catch (error) {
+			// Don't show error toast if it's just "no token" - that's expected when cookies aren't present
+			console.log('[ExternalAuth] External auth not available:', error);
+		}
+
+		return false;
+	};
+
+	const oauthCallbackHandler = async () => {
 		const token = getCookie('token');
 		if (!token) {
 			return;
@@ -139,10 +182,10 @@
 
 			if (isDarkMode) {
 				const darkImage = new Image();
-				darkImage.src = `${WEBUI_BASE_URL}/static/favicon-dark.png`;
+				darkImage.src = `${WEBUI_BASE_URL}/static/favicon.png`;
 
 				darkImage.onload = () => {
-					logo.src = `${WEBUI_BASE_URL}/static/favicon-dark.png`;
+					logo.src = `${WEBUI_BASE_URL}/static/favicon.png`;
 					logo.style.filter = ''; // Ensure no inversion is applied if favicon-dark.png exists
 				};
 
@@ -166,6 +209,12 @@
 		const error = $page.url.searchParams.get('error');
 		if (error) {
 			toast.error(error);
+		}
+
+		// Check for external access_token cookie first (from external app redirect)
+		const externalAuthSuccess = await externalTokenHandler();
+		if (externalAuthSuccess) {
+			return; // User is logged in via external token, exit early
 		}
 
 		await oauthCallbackHandler();
@@ -276,7 +325,7 @@
 													bind:value={name}
 													type="text"
 													id="name"
-													class="my-0.5 w-full text-sm outline-hidden bg-transparent placeholder:text-gray-300 dark:placeholder:text-gray-600"
+													class="my-0.5 w-full text-sm outline-hidden bg-transparent border-gray-600 placeholder:text-gray-300 dark:placeholder:text-gray-600"
 													autocomplete="name"
 													placeholder={$i18n.t('Enter Your Full Name')}
 													required

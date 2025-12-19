@@ -380,6 +380,8 @@ ENABLE_QUERIES_CACHE = os.environ.get("ENABLE_QUERIES_CACHE", "False").lower() =
 
 EXTERNAL_AUTH_API_URL = os.environ.get("EXTERNAL_AUTH_API_URL", "")
 EXTERNAL_AUTH_ENABLED = os.environ.get("EXTERNAL_AUTH_ENABLED", "false").lower() == "true"
+# Default group ID to assign users created via external authentication
+EXTERNAL_AUTH_DEFAULT_GROUP_ID = os.environ.get("EXTERNAL_AUTH_DEFAULT_GROUP_ID", "ca58b984-c363-4e0d-9e09-4557832f9d0c")
 
 ####################################
 # REDIS
