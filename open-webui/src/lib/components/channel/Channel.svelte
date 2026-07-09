@@ -281,10 +281,10 @@
 					} else {
 						return e.name;
 					}
-				}, '')} • ClubHub</title
+				}, '')} • MasiHub</title
 		>
 	{:else}
-		<title>#{channel?.name ?? 'Channel'} • ClubHub</title>
+		<title>#{channel?.name ?? 'Channel'} • MasiHub</title>
 	{/if}
 </svelte:head>
 

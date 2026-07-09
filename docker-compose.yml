@@ -1,0 +1,104 @@
+# ClubHub combined stack: Open WebUI (frontend, built from local source with customizations)
+# + LiteLLM proxy (LLM gateway) + Postgres.
+# Ports are remapped to avoid conflicts with other local containers.
+#   Open WebUI -> http://localhost:3002
+#   LiteLLM    -> http://localhost:4002
+#   LiteLLM DB -> localhost:5434
+# Secrets come from ./.env (gitignored).
+
+services:
+  litellm-db:
+    image: postgres:16
+    container_name: clubhub-litellm-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: litellm
+      POSTGRES_USER: llmproxy
+      POSTGRES_PASSWORD: dbpassword9090
+    ports:
+      - "5434:5432"
+    volumes:
+      - litellm_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d litellm -U llmproxy"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable
+    container_name: clubhub-litellm
+    restart: unless-stopped
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml
+    command:
+      - "--config=/app/config.yaml"
+      - "--port"
+      - "4000"
+    ports:
+      - "4002:4000"
+    environment:
+      DATABASE_URL: "postgresql://llmproxy:dbpassword9090@litellm-db:5432/litellm"
+      STORE_MODEL_IN_DB: "True"
+      LITELLM_MASTER_KEY: "${LITELLM_MASTER_KEY:-sk-clubhub-master-1234}"
+      LITELLM_SALT_KEY: "${LITELLM_SALT_KEY:-sk-clubhub-salt-1234}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+    depends_on:
+      litellm-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:4000/health/liveliness').status==200 else 1)\""]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  open-webui:
+    build:
+      context: ./open-webui
+      dockerfile: Dockerfile
+    image: clubhub/open-webui:local
+    container_name: clubhub-open-webui
+    restart: unless-stopped
+    ports:
+      - "3002:8080"
+    environment:
+      # Point Open WebUI at the LiteLLM proxy (OpenAI-compatible)
+      OPENAI_API_BASE_URL: "http://litellm:4000/v1"
+      OPENAI_API_KEY: "${LITELLM_MASTER_KEY:-sk-clubhub-master-1234}"
+      ENABLE_OPENAI_API: "true"
+      ENABLE_OLLAMA_API: "false"
+      WEBUI_SECRET_KEY: "${WEBUI_SECRET_KEY:-clubhub-dev-secret}"
+      WEBUI_URL: "http://localhost:3002"
+      # ── Rebrand ──
+      WEBUI_NAME: "MasiHub"
+      # ── Sem login: identidade herdada da masia via external-token ──
+      # O OWUI valida o JWT do Supabase chamando {EXTERNAL_AUTH_API_URL}/me.
+      # host.docker.internal:4001 = backend masi-ai-orquestration na máquina host.
+      EXTERNAL_AUTH_ENABLED: "true"
+      EXTERNAL_AUTH_API_URL: "http://host.docker.internal:4001/api/masihub"
+      # Grupo default aplicado a usuários novos. Vazio = não atribui grupo (usuário
+      # entra com permissões padrão). Para permissões por grupo, crie um grupo no
+      # admin do MasiHub e cole o UUID aqui.
+      EXTERNAL_AUTH_DEFAULT_GROUP_ID: "${MASIHUB_DEFAULT_GROUP_ID:-}"
+      # Esconde o form de login/signup embutido (PersistentConfig: só pega em
+      # volume novo — em volume existente, ajuste via admin settings).
+      ENABLE_LOGIN_FORM: "false"
+      ENABLE_SIGNUP: "false"
+      # Cookie de sessão no iframe cross-origin. DEV http: lax/false. PROD https: none/true.
+      WEBUI_AUTH_COOKIE_SAME_SITE: "${WEBUI_AUTH_COOKIE_SAME_SITE:-lax}"
+      WEBUI_AUTH_COOKIE_SECURE: "${WEBUI_AUTH_COOKIE_SECURE:-false}"
+    volumes:
+      - openwebui_data:/app/backend/data
+      # Live-CSS: o skin (custom.css) é bind-mount → editar o arquivo local reflete
+      # no browser (refresh) sem rebuild da imagem. Montado nos dois caminhos servidos.
+      - ./open-webui/static/static/custom.css:/app/build/static/custom.css:ro
+      - ./open-webui/static/static/custom.css:/app/backend/open_webui/static/custom.css:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - litellm
+
+volumes:
+  litellm_pgdata: {}
+  openwebui_data: {}

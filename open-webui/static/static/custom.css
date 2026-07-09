@@ -1,0 +1,330 @@
+/* ==========================================================================
+   MasiHub skin — premium, inspirado no adapta.one, com o VERDE masi.
+   Servido via app.html (<link href="/static/custom.css">) e bind-mount (live).
+   Tema (light/dark) vem do host (masia) → classe .dark/.light no <html>.
+   Princípios (impeccable / product register): profundidade COM propósito,
+   accent só p/ ação·seleção·estado, familiaridade > decoração, motion 150–250ms.
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@500;600&display=swap');
+
+/* ============================ 1. PALETA (ramp) ============================ */
+/* LIGHT — creme + slate (masi) */
+:root {
+  --color-gray-50:  #f7f2e9;
+  --color-gray-100: #f2ebe0;   /* creme bg */
+  --color-gray-200: #e6ddcc;
+  --color-gray-300: #cbd5e1;
+  --color-gray-400: #94a3b8;
+  --color-gray-500: #64748b;
+  --color-gray-600: #475569;
+  --color-gray-700: #334155;
+  --color-gray-800: #1f2937;
+  --color-gray-850: #172033;
+  --color-gray-900: #0f172a;   /* ink */
+  --color-gray-950: #0b1220;
+
+  /* Accent masi (verde) — semântico */
+  --mh-accent:      #16a34a;
+  --mh-accent-500:  #22c55e;
+  --mh-accent-600:  #16a34a;
+  --mh-accent-700:  #15803d;
+  --mh-lime:        #a3e635;
+  --mh-accent-grad: linear-gradient(135deg, #4ade80 0%, #22c55e 50%, #16a34a 100%);
+  --mh-accent-soft: rgba(34, 197, 94, 0.10);   /* tint de seleção/hover */
+  --mh-accent-ring: rgba(34, 197, 94, 0.35);   /* foco */
+
+  /* Superfícies + elevação (sombras QUENTES no light) */
+  --mh-surface:      #ffffff;
+  --mh-surface-2:    #fbf7ef;                    /* segunda camada (sidebar/painel) */
+  --mh-border:       rgba(120, 95, 60, 0.14);
+  --mh-border-soft:  rgba(120, 95, 60, 0.09);
+  --mh-glass-bg:     rgba(255, 253, 249, 0.72);
+  --mh-glass-border: rgba(255, 255, 255, 0.66);
+  --mh-shadow-sm: 0 1px 2px rgba(60,45,25,.05), 0 1px 3px rgba(60,45,25,.05);
+  --mh-shadow-md: 0 2px 6px rgba(60,45,25,.05), 0 8px 20px rgba(60,45,25,.08);
+  --mh-shadow-lg: 0 6px 16px rgba(60,45,25,.07), 0 18px 44px rgba(60,45,25,.12);
+  --mh-shadow-accent: 0 6px 18px rgba(34,197,94,.28);
+
+  --mh-radius: 16px;
+  --mh-ease: cubic-bezier(.16, 1, .3, 1);
+}
+
+/* DARK — navy + slate (masi). !important nos grays que o ThemeSelector seta inline. */
+.dark {
+  --color-gray-50:  #f5f8fc;
+  --color-gray-100: #e6edf6;
+  --color-gray-200: #cbd5e1;
+  --color-gray-300: #94a3b8;
+  --color-gray-400: #64748b;
+  --color-gray-500: #475569;
+  --color-gray-600: #334155;
+  --color-gray-700: #1e293b;
+  --color-gray-800: #16233b !important;
+  --color-gray-850: #101a2e !important;
+  --color-gray-900: #0b1220 !important;   /* navy bg */
+  --color-gray-950: #070d17 !important;
+
+  --mh-surface:      #131f36;
+  --mh-surface-2:    #0e1830;
+  --mh-border:       rgba(148, 163, 184, 0.16);
+  --mh-border-soft:  rgba(148, 163, 184, 0.10);
+  --mh-glass-bg:     rgba(19, 31, 54, 0.66);
+  --mh-glass-border: rgba(148, 163, 184, 0.14);
+  --mh-shadow-sm: 0 1px 2px rgba(0,0,0,.35);
+  --mh-shadow-md: 0 2px 8px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.4);
+  --mh-shadow-lg: 0 10px 30px rgba(0,0,0,.5), 0 24px 60px rgba(0,0,0,.5);
+  --mh-shadow-accent: 0 8px 22px rgba(34,197,94,.32);
+  --mh-accent-soft: rgba(74, 222, 128, 0.12);
+}
+
+/* ============================ 2. FUNDO (mesh) ============================ */
+/* Tira o "chapado": halos radiais verdes muito sutis sobre creme/navy. */
+body {
+  background-color: #f2ebe0;
+  background-image:
+    radial-gradient(1100px 620px at 12% -8%, rgba(163,230,53,.14), transparent 60%),
+    radial-gradient(1000px 680px at 108% 6%, rgba(34,197,94,.10), transparent 55%),
+    radial-gradient(900px 700px at 50% 116%, rgba(120,95,60,.05), transparent 60%);
+  background-attachment: fixed;
+  color: #1a1919;
+}
+.dark body {
+  background-color: #0b1220;
+  background-image:
+    radial-gradient(1100px 640px at 10% -10%, rgba(34,197,94,.14), transparent 58%),
+    radial-gradient(1000px 700px at 110% 4%, rgba(56,189,248,.08), transparent 55%),
+    radial-gradient(900px 760px at 50% 118%, rgba(99,102,241,.10), transparent 60%);
+  background-attachment: fixed;
+  color: #f5f8fc;
+}
+
+/* ============================ 3. TIPOGRAFIA ============================ */
+h1, h2, h3, .font-primary {
+  font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  letter-spacing: -0.014em;
+}
+kbd, .font-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+
+/* ==================== 4. ELEVAÇÃO em camadas flutuantes ==================== */
+/* Todo painel flutuante do OWUI usa .shadow-lg → vira sombra masi + borda fina. */
+.shadow-lg {
+  box-shadow: var(--mh-shadow-lg) !important;
+  border-color: var(--mh-border) !important;
+}
+
+/* ============================ 5. ACCENT semântico ============================ */
+/* Corrige o override cego (azul + sky → verde) e cobre foco/anel. */
+.bg-blue-500, .bg-blue-600, .bg-blue-700,
+.bg-sky-500, .bg-sky-600 { background-color: var(--mh-accent-500) !important; }
+.hover\:bg-blue-600:hover, .hover\:bg-blue-700:hover,
+.active\:bg-blue-700:active, .hover\:bg-sky-600:hover { background-color: var(--mh-accent-600) !important; }
+.text-blue-500, .text-blue-600, .text-blue-700,
+.text-sky-300, .text-sky-500, .text-sky-600 { color: var(--mh-accent-600) !important; }
+.dark .text-sky-300, .dark .text-blue-400 { color: #4ade80 !important; }
+.border-blue-500, .border-blue-600, .border-sky-200\/40, .border-sky-400\/20 { border-color: var(--mh-accent-ring) !important; }
+.bg-sky-50, .bg-sky-400\/10 { background-color: var(--mh-accent-soft) !important; }
+.ring-blue-500, .focus\:ring-blue-500:focus { --tw-ring-color: var(--mh-accent-500) !important; }
+.from-blue-500 { --tw-gradient-from: var(--mh-lime) !important; }
+.to-blue-600 { --tw-gradient-to: var(--mh-accent-600) !important; }
+
+/* ============================ 6. SIDEBAR ============================ */
+/* Segunda camada neutra + separação sutil do conteúdo (sem sombra pesada). */
+#sidebar {
+  background-color: var(--mh-surface-2) !important;
+  border-right: 1px solid var(--mh-border-soft);
+  box-shadow: 1px 0 0 rgba(255,255,255,.4) inset;
+}
+.dark #sidebar { box-shadow: 1px 0 0 rgba(148,163,184,.06) inset; }
+
+/* Novo chat = CTA verde (ação primária), não linha-hover chapada. */
+#sidebar-new-chat-button {
+  background-image: var(--mh-accent-grad);
+  color: #fff !important;
+  box-shadow: var(--mh-shadow-accent);
+  transition: transform .18s var(--mh-ease), box-shadow .18s var(--mh-ease), filter .18s var(--mh-ease);
+}
+#sidebar-new-chat-button:hover { filter: brightness(1.05); transform: translateY(-1px); }
+#sidebar-new-chat-button:active { transform: translateY(0); }
+#sidebar-new-chat-button * { color: #fff !important; }
+
+/* Item de chat ativo = tint + borda (NÃO barra lateral). */
+#sidebar-chat-item.selected,
+#sidebar-chat-item:hover {
+  border-radius: 12px;
+  transition: background-color .15s var(--mh-ease);
+}
+#sidebar-chat-item.selected {
+  background-color: var(--mh-accent-soft) !important;
+  box-shadow: inset 0 0 0 1px var(--mh-border-soft);
+}
+
+/* ============================ 7. COMPOSER · SEND ============================ */
+/* Send vira verde (ação primária). Estados: default/hover/disabled. */
+#send-message-button:not(:disabled) {
+  background-image: var(--mh-accent-grad) !important;
+  background-color: transparent !important;
+  color: #fff !important;
+  box-shadow: var(--mh-shadow-accent);
+}
+#send-message-button:not(:disabled):hover { filter: brightness(1.06); }
+#send-message-button:not(:disabled) * { color: #fff !important; }
+
+/* Anel de foco verde em INPUTS (o composer/textarea fica como está, a pedido). */
+input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--mh-accent-ring);
+}
+
+/* ============================ 8. HOOKS (.mh-*) ============================ */
+/* Estilizados aqui; as classes são adicionadas nos componentes (próximo passo). */
+
+/* Composer container (id estável — sem edição de componente) */
+#message-input-container {
+  background: var(--mh-glass-bg) !important;
+  border: 1px solid var(--mh-glass-border) !important;
+  box-shadow: var(--mh-shadow-lg) !important;
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  transition: border-color .18s var(--mh-ease), box-shadow .18s var(--mh-ease);
+}
+#message-input-container:focus-within {
+  border-color: var(--mh-accent-ring) !important;
+  box-shadow: var(--mh-shadow-lg), 0 0 0 3px var(--mh-accent-ring) !important;
+}
+
+/* Dropdown do seletor de modelos (glass) */
+.mh-model-dropdown {
+  background: var(--mh-glass-bg) !important;
+  border: 1px solid var(--mh-glass-border) !important;
+  box-shadow: var(--mh-shadow-lg) !important;
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+}
+
+/* Trigger do seletor (id estável) — vira pílula com afeto (hoje é texto puro) */
+[id^="model-selector-"][id$="-button"] {
+  width: auto !important;
+  border: 1px solid var(--mh-border-soft);
+  background: color-mix(in srgb, var(--mh-surface) 55%, transparent);
+  border-radius: 999px !important;
+  padding: 5px 12px !important;
+  transition: background-color .16s var(--mh-ease), border-color .16s var(--mh-ease);
+}
+[id^="model-selector-"][id$="-button"]:hover { background: var(--mh-surface); border-color: var(--mh-border); }
+
+/* Logo de provedor no seletor (classe .mh-logo na img) — vira tile com profundidade */
+.mh-logo {
+  width: 30px !important; height: 30px !important;
+  padding: 5px; border-radius: 9px !important;
+  background: color-mix(in srgb, var(--color-gray-100) 55%, #fff);
+  border: 1px solid var(--mh-border-soft);
+  box-shadow: var(--mh-shadow-sm);
+  object-fit: contain;
+}
+.dark .mh-logo { background: rgba(255,255,255,.94); } /* logos escuros legíveis no dark */
+
+/* Badge (Novo / Em alta / Destaque) */
+.mh-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 999px; line-height: 1.4;
+}
+.mh-badge-new { color: #15803d; background: var(--mh-accent-soft); border: 1px solid var(--mh-accent-ring); }
+.dark .mh-badge-new { color: #86efac; }
+
+/* Card de sugestão (landing) — chips .waterfall viram cards c/ borda·sombra·lift */
+button.waterfall {
+  border: 1px solid var(--mh-border-soft) !important;
+  background: color-mix(in srgb, var(--mh-surface) 60%, transparent) !important;
+  border-radius: 14px !important;
+  box-shadow: var(--mh-shadow-sm);
+  transition: transform .16s var(--mh-ease), box-shadow .16s var(--mh-ease), border-color .16s var(--mh-ease);
+}
+button.waterfall:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--mh-shadow-md);
+  border-color: var(--mh-accent-ring) !important;
+  background: var(--mh-surface) !important;
+}
+
+/* Bolha do usuário — tint + sombra macia (sai do cinza chapado) */
+.mh-user-bubble {
+  background: color-mix(in srgb, var(--mh-accent-soft) 60%, var(--mh-surface)) !important;
+  border: 1px solid var(--mh-border-soft);
+  box-shadow: var(--mh-shadow-sm);
+}
+
+/* ============================ 9. MOTION ============================ */
+button, .rounded-full, .rounded-xl, .rounded-2xl {
+  transition: background-color .16s var(--mh-ease), color .16s var(--mh-ease),
+              border-color .16s var(--mh-ease), box-shadow .16s var(--mh-ease);
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
+  #sidebar-new-chat-button:hover, button.waterfall:hover { transform: none; }
+}
+
+/* ==================== 10. AJUSTES (feedback do usuário) ==================== */
+
+/* (a) Logos "CH" (ClubHub) substituídas pela marca masi (masi-logo.svg nos
+   componentes). Qualquer png CH remanescente segue oculto por segurança. O #logo
+   é o splash de boot (transiente) — mantido oculto. */
+img[src$="/static/favicon.png"],
+img[src$="/static/favicon-dark.png"],
+img[src$="/static/splash.png"],
+img[src$="/static/splash-dark.png"],
+img[src$="/static/logo.png"],
+#logo { display: none !important; }
+
+/* Nome do app (MasiHub) ancorado à esquerda, junto da logo (era o item central
+   de uma row justify-between → parecia "no meio"). */
+#sidebar-webui-name { margin-right: auto; text-align: left; }
+
+/* (b) Botão de voz / voice-mode (círculo preto) → verde masi. Reforça o send. */
+#voice-input-button { color: var(--mh-accent-600) !important; }
+#message-input-container .bg-black {
+  background-image: var(--mh-accent-grad) !important;
+  background-color: transparent !important;
+  color: #fff !important;
+}
+#message-input-container .bg-black:hover { filter: brightness(1.06); }
+#message-input-container .bg-black * { color: #fff !important; }
+
+/* (c) Sugestões: o container tem altura fixa (h-40) → card com borda estourava e
+   cortava seco. Espaço entre cards + fade no fim (em vez de corte abrupto). */
+button.waterfall { margin-bottom: 6px; padding: 9px 12px !important; }
+.max-h-40.overflow-auto {
+  padding-bottom: 6px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 82%, transparent);
+  mask-image: linear-gradient(to bottom, #000 82%, transparent);
+}
+
+/* (d) Inputs (busca e outros) no padrão masi — EXCETO o composer da LLM (textarea).
+   Campos de busca vivem num wrapper (#chat-search/#search-container): o "field"
+   é o wrapper. Inputs soltos ganham fill+borda; o input da busca fica transparente. */
+#chat-search, #search-container > .flex.w-full, .mh-field {
+  background: color-mix(in srgb, var(--mh-surface) 70%, transparent) !important;
+  border: 1px solid var(--mh-border-soft) !important;
+  border-radius: 12px !important;
+  transition: border-color .16s var(--mh-ease), box-shadow .16s var(--mh-ease);
+}
+#chat-search:focus-within, #search-container > .flex.w-full:focus-within {
+  border-color: var(--mh-accent-ring) !important;
+  box-shadow: 0 0 0 3px var(--mh-accent-ring);
+}
+input[type="text"], input[type="search"], input[type="email"],
+input[type="password"], input[type="number"], input:not([type]) {
+  background: color-mix(in srgb, var(--mh-surface) 68%, transparent);
+  border: 1px solid var(--mh-border-soft);
+  border-radius: 10px;
+  transition: border-color .16s var(--mh-ease), box-shadow .16s var(--mh-ease);
+}
+/* O input da busca fica transparente (o wrapper #chat-search é o campo). */
+#search-input, #chat-search input, [id^="model-selector-"] + * input,
+.mh-model-dropdown input {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}

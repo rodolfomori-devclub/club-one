@@ -46,6 +46,18 @@
 				const metaThemeColorTag = document.querySelector('meta[name="theme-color"]');
 				const prefersDarkTheme = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
+				// MasiHub embutido: o tema SEMPRE vem do host (masia) via ?theme= (semeado
+				// pelo MasiHubView). Aplica já no primeiro paint — sem flash, sempre segue a app.
+				const embedTheme = new URLSearchParams(location.search).get('theme');
+				if (embedTheme === 'dark' || embedTheme === 'light') {
+					localStorage.theme = embedTheme;
+					document.documentElement.classList.add(embedTheme);
+					document.documentElement.setAttribute('data-theme', embedTheme);
+					if (metaThemeColorTag)
+						metaThemeColorTag.setAttribute('content', embedTheme === 'dark' ? '#0b1220' : '#f2ebe0');
+					return;
+				}
+
 				if (!localStorage?.theme) {
 					localStorage.theme = 'system';
 				}
@@ -103,7 +115,7 @@
 			})();
 		</script>
 
-		<title>ClubHub</title>
+		<title>MasiHub</title>
 
 		%sveltekit.head%
 	</head>

@@ -52,3 +52,8 @@ open-webui/backend/uploads/
 
 # LiteLLM specific
 litellm/postgres_data/
+
+# Tooling internal (ruflo / claude-flow) — não versionar
+.claude-flow/
+.swarm/
+.hive-mind/

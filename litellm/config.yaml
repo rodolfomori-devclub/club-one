@@ -1,0 +1,24 @@
+# LiteLLM proxy config for ClubHub stack
+model_list:
+  # Boots and works WITHOUT any real key (LiteLLM public demo endpoint) — useful to test the stack end-to-end
+  - model_name: demo-model
+    litellm_params:
+      model: openai/fake
+      api_key: fake-key
+      api_base: https://exampleopenaiendpoint-production.up.railway.app/
+
+  # Real OpenAI models — set OPENAI_API_KEY in ./.env to enable these
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+litellm_settings:
+  drop_params: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

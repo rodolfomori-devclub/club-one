@@ -79,7 +79,7 @@
 					<img
 						src={`${WEBUI_API_BASE_URL}/models/model/profile/image?id=${item.model.id}&lang=${$i18n.language}`}
 						alt="Model"
-						class="rounded-full size-5 flex items-center"
+						class="mh-logo rounded-full size-5 flex items-center"
 					/>
 				</Tooltip>
 			</div>

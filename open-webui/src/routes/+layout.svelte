@@ -45,7 +45,7 @@
 	import 'tippy.js/dist/tippy.css';
 
 	import { executeToolServer, getBackendConfig, getVersion } from '$lib/apis';
-	import { getSessionUser, userSignOut } from '$lib/apis/auths';
+	import { getSessionUser, userSignOut, externalTokenAuth } from '$lib/apis/auths';
 	import { getAllTags, getChatList } from '$lib/apis/chats';
 	import { chatCompletion } from '$lib/apis/openai';
 
@@ -59,6 +59,79 @@
 	import { getUserSettings } from '$lib/apis/users';
 	import dayjs from 'dayjs';
 	import { getChannels } from '$lib/apis/channels';
+
+	// ─── MasiHub embed bridge ──────────────────────────────────────────
+	// Embutido no shell da masia, a identidade vem do host (JWT do Supabase) por
+	// postMessage/URL — sem tela de login. Espelha o padrão do Masi Design
+	// (ver MasiHubView.jsx no masi-negocios-prot).
+	const MASI_PARENT_ORIGINS = [
+		'http://localhost:5173',
+		'http://localhost:5174',
+		'http://localhost:3000'
+		// PROD: adicionar a(s) origem(ns) publicada(s) da masia antes de subir.
+	];
+	const isTrustedParentOrigin = (o) =>
+		MASI_PARENT_ORIGINS.includes(o) ||
+		/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(o) ||
+		/^https:\/\/([a-z0-9-]+\.)*(masinegocios\.com\.br|masi\.ia\.br)$/i.test(o);
+
+	// Aplica o tema do host (classe no <html>); o custom.css cobre os grays dark.
+	function applyHostTheme(t) {
+		const dark = t === 'dark';
+		const el = document.documentElement;
+		// Sempre segue o host: remove qualquer variante (her/oled) e fixa só dark/light.
+		el.classList.remove('dark', 'light', 'her', 'oled-dark');
+		el.classList.add(dark ? 'dark' : 'light');
+		el.setAttribute('data-theme', dark ? 'dark' : 'light');
+		try {
+			localStorage.theme = dark ? 'dark' : 'light';
+		} catch (e) {}
+	}
+
+	// Loga a sessão OWUI a partir de um JWT externo (replica o essencial de
+	// setSessionUser, que é local ao /auth). Retorna true se autenticou.
+	async function loginWithExternalToken(token) {
+		try {
+			const sessionUser = await externalTokenAuth(token, null);
+			if (!sessionUser) return false;
+			if (sessionUser.token) localStorage.token = sessionUser.token;
+			try {
+				$socket?.emit('user-join', { auth: { token: sessionUser.token ?? localStorage.token } });
+			} catch (e) {}
+			await user.set(sessionUser);
+			await config.set(await getBackendConfig());
+			return true;
+		} catch (e) {
+			console.warn('[MasiHub] external login failed', e);
+			return false;
+		}
+	}
+
+	// Pede o token ao parent e aguarda { type: 'masi:auth' } (ou timeout).
+	function requestTokenFromParent(timeoutMs = 2500) {
+		return new Promise((resolve) => {
+			if (typeof window === 'undefined' || window.parent === window) return resolve(null);
+			let done = false;
+			const onMsg = (e) => {
+				if (!isTrustedParentOrigin(e.origin)) return;
+				if (e.data?.type === 'masi:auth' && e.data.token && !done) {
+					done = true;
+					window.removeEventListener('message', onMsg);
+					resolve(e.data.token);
+				}
+			};
+			window.addEventListener('message', onMsg);
+			try {
+				window.parent.postMessage({ type: 'masi:request-auth' }, '*');
+			} catch (e) {}
+			setTimeout(() => {
+				if (!done) {
+					window.removeEventListener('message', onMsg);
+					resolve(null);
+				}
+			}, timeoutMs);
+		});
+	}
 
 	const unregisterServiceWorkers = async () => {
 		if ('serviceWorker' in navigator) {
@@ -589,6 +662,13 @@
 	};
 
 	onMount(async () => {
+		// MasiHub: escuta o host (masia) — refresh de token e troca de tema.
+		window.addEventListener('message', async (e) => {
+			if (!isTrustedParentOrigin(e.origin)) return;
+			const d = e.data || {};
+			if (d.type === 'masi:theme' && d.theme) applyHostTheme(d.theme);
+			if (d.type === 'masi:auth' && d.token) await loginWithExternalToken(d.token);
+		});
 		let touchstartY = 0;
 
 		function isNavOrDescendant(el) {
@@ -760,7 +840,12 @@
 				} else {
 					// Don't redirect if we're already on the auth page
 					// Needed because we pass in tokens from OAuth logins via URL fragments
-					if ($page.url.pathname !== '/auth') {
+					// MasiHub embed: tenta o token do host (seed na URL ou postMessage) ANTES
+					// de ir pro /auth — assim o iframe abre sem flash de tela de login.
+					const seedToken =
+						$page.url.searchParams.get('access_token') || (await requestTokenFromParent());
+					const embedded = seedToken ? await loginWithExternalToken(seedToken) : false;
+					if (!embedded && $page.url.pathname !== '/auth') {
 						await goto(`/auth?redirect=${encodedUrl}`);
 					}
 				}
