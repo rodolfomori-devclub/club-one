@@ -362,6 +362,17 @@ ENABLE_QUERIES_CACHE = os.getenv('ENABLE_QUERIES_CACHE', 'False').lower() == 'tr
 RAG_SYSTEM_CONTEXT = os.getenv('RAG_SYSTEM_CONTEXT', 'False').lower() == 'true'
 
 ####################################
+# External Authentication (MasiHub / DevClub)
+####################################
+
+EXTERNAL_AUTH_API_URL = os.environ.get('EXTERNAL_AUTH_API_URL', '')
+EXTERNAL_AUTH_ENABLED = os.environ.get('EXTERNAL_AUTH_ENABLED', 'false').lower() == 'true'
+# Grupo default atribuído a usuários criados via autenticação externa
+EXTERNAL_AUTH_DEFAULT_GROUP_ID = os.environ.get(
+    'EXTERNAL_AUTH_DEFAULT_GROUP_ID', 'ca58b984-c363-4e0d-9e09-4557832f9d0c'
+)
+
+####################################
 # REDIS
 ####################################
 
@@ -839,9 +850,10 @@ if LICENSE_PUBLIC_KEY:
 # WEBUI Identity
 ####################################
 
-WEBUI_NAME = os.getenv('WEBUI_NAME', 'Open WebUI')
-if WEBUI_NAME != 'Open WebUI':
-    WEBUI_NAME += ' (Open WebUI)'
+WEBUI_NAME = os.getenv('WEBUI_NAME', 'MasiHub')
+# MasiHub: não anexa o sufixo "(Open WebUI)" ao nome customizado
+if WEBUI_NAME != 'MasiHub':
+    WEBUI_NAME = WEBUI_NAME
 
 WEBUI_FAVICON_URL = 'https://openwebui.com/favicon.png'
 WEBUI_BUILD_HASH = os.getenv('WEBUI_BUILD_HASH', 'dev-build')

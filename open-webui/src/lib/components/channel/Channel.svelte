@@ -309,10 +309,10 @@
 					} else {
 						return e.name;
 					}
-				}, '')} • Open WebUI</title
+				}, '')} • MasiHub</title
 		>
 	{:else}
-		<title>#{channel?.name ?? 'Channel'} • Open WebUI</title>
+		<title>#{channel?.name ?? 'Channel'} • MasiHub</title>
 	{/if}
 </svelte:head>
 

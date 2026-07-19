@@ -20,6 +20,10 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 
+	// Embutido na masia (iframe)? Então oculta tema/temp-chat/conta no topo — o
+	// shell da masia já provê esses controles no header do MasiHubView.
+	const embedded = typeof window !== 'undefined' && window.self !== window.top;
+
 	import ShareChatModal from '../chat/ShareChatModal.svelte';
 	import ModelSelector from '../chat/ModelSelector.svelte';
 	import Tooltip from '../common/Tooltip.svelte';
@@ -38,6 +42,7 @@
 	import ChatPlus from '../icons/ChatPlus.svelte';
 	import ChatCheck from '../icons/ChatCheck.svelte';
 	import Knobs from '../icons/Knobs.svelte';
+	import ThemeSelector from '../common/ThemeSelector.svelte';
 	import { WEBUI_API_BASE_URL } from '$lib/constants';
 
 	const i18n = getContext('i18n');
@@ -134,7 +139,9 @@
 				<div class="self-start flex flex-none items-center text-gray-600 dark:text-gray-400">
 					<!-- <div class="md:hidden flex self-center w-[1px] h-5 mx-2 bg-gray-300 dark:bg-stone-700" /> -->
 
-					{#if $user?.role === 'user' ? ($user?.permissions?.chat?.temporary ?? true) && !($user?.permissions?.chat?.temporary_enforced ?? false) : true}
+					{#if !embedded}<ThemeSelector />{/if}
+
+					{#if !embedded && ($user?.role === 'user' ? ($user?.permissions?.chat?.temporary ?? true) && !($user?.permissions?.chat?.temporary_enforced ?? false) : true)}
 						{#if !chat?.id}
 							<Tooltip content={$i18n.t(`Temporary Chat`)}>
 								<button
@@ -248,7 +255,7 @@
 						</Tooltip>
 					{/if}
 
-					{#if $user !== undefined && $user !== null}
+					{#if !embedded && $user !== undefined && $user !== null}
 						<UserMenu
 							className="w-[240px]"
 							role={$user?.role}
