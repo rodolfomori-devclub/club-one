@@ -9,7 +9,7 @@ import urllib
 import uuid
 from ssl import CERT_NONE, CERT_REQUIRED, PROTOCOL_TLS
 
-from aiohttp import ClientSession
+from aiohttp import ClientSession, ClientTimeout
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse, Response
 from ldap3 import NONE, Connection, Server, Tls
@@ -24,6 +24,9 @@ from open_webui.env import (
     AIOHTTP_CLIENT_SESSION_SSL,
     ENABLE_INITIAL_ADMIN_SIGNUP,
     ENABLE_OAUTH_TOKEN_EXCHANGE,
+    EXTERNAL_AUTH_API_URL,
+    EXTERNAL_AUTH_DEFAULT_GROUP_ID,
+    EXTERNAL_AUTH_ENABLED,
     WEBUI_AUTH,
     WEBUI_AUTH_COOKIE_SAME_SITE,
     WEBUI_AUTH_COOKIE_SECURE,
@@ -646,6 +649,110 @@ async def ldap_auth(
 
 
 ############################
+# External Token Authentication (MasiHub / DevClub)
+############################
+
+
+class ExternalTokenForm(BaseModel):
+    token: str | None = None
+    api_key: str | None = None
+
+
+@router.post('/external/token', response_model=SessionUserResponse)
+async def external_token_auth(
+    request: Request,
+    response: Response,
+    form_data: ExternalTokenForm | None = None,
+    db: AsyncSession = Depends(get_async_session),
+):
+    """
+    Autentica o usuário via access_token externo (home DevClub / iframe masia).
+    O token vem do corpo (form_data) ou de cookie — nunca usa senha. Valida
+    chamando {EXTERNAL_AUTH_API_URL}/me e cria/loga o usuário local (role 'user').
+    """
+    if not EXTERNAL_AUTH_ENABLED or not EXTERNAL_AUTH_API_URL:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='External authentication is not enabled',
+        )
+
+    body_token = form_data.token if form_data else None
+    body_api_key = form_data.api_key if form_data else None
+
+    access_token = body_token or request.cookies.get('access_token')
+    api_key = body_api_key or request.cookies.get('api_key')
+
+    if not access_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='No access_token provided',
+        )
+
+    external_headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Content-Type': 'application/json',
+    }
+    if api_key:
+        external_headers['api_key'] = api_key
+
+    try:
+        async with ClientSession(trust_env=True, timeout=ClientTimeout(total=10)) as session:
+            async with session.get(
+                f'{EXTERNAL_AUTH_API_URL}/me?checkMbaGroup=true',
+                headers=external_headers,
+                ssl=AIOHTTP_CLIENT_SESSION_SSL,
+            ) as me_response:
+                if me_response.status == 403:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail='Permission denied',
+                    )
+                if me_response.status != 200:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail='Invalid or expired token',
+                    )
+                user_data = await me_response.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f'External token auth error: {e}')
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail='Authentication failed',
+        )
+
+    user_email = (user_data.get('email') or '').lower()
+    user_name = user_data.get('name') or user_email
+    if not user_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='No email returned from external API',
+        )
+
+    user = await Users.get_user_by_email(user_email, db=db)
+    if not user:
+        hashed = await get_password_hash(str(uuid.uuid4()))
+        new_user = await Auths.insert_new_auth(
+            email=user_email,
+            password=hashed,
+            name=user_name,
+            role='user',
+            db=db,
+        )
+        if not new_user:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail='Failed to create user',
+            )
+        user = await Users.get_user_by_id(new_user.id, db=db)
+        if EXTERNAL_AUTH_DEFAULT_GROUP_ID:
+            await apply_default_group_assignment(EXTERNAL_AUTH_DEFAULT_GROUP_ID, user.id, db=db)
+
+    return await create_session_response(request, user, db, response, set_cookie=True, source='external_token')
+
+
+############################
 # SignIn
 ############################
 
@@ -743,11 +850,18 @@ async def signin(
                 detail=ERROR_MESSAGES.RATE_LIMIT_EXCEEDED,
             )
 
-        user = await Auths.authenticate_user(
-            form_data.email.lower(),
-            lambda pw: verify_password(form_data.password, pw),
-            db=db,
-        )
+        # MasiHub: apenas ADMIN autentica por email/senha (para configurar as chaves).
+        # Usuários comuns entram exclusivamente pelo token externo (/external/token,
+        # semeado pela home DevClub via iframe); login por senha é rejeitado.
+        existing_user = await Users.get_user_by_email(form_data.email.lower(), db=db)
+        if existing_user and existing_user.role == 'admin':
+            user = await Auths.authenticate_user(
+                form_data.email.lower(),
+                lambda pw: verify_password(form_data.password, pw),
+                db=db,
+            )
+        else:
+            user = None
 
     if user:
         return await create_session_response(request, user, db, response, set_cookie=True, source=auth_source)
