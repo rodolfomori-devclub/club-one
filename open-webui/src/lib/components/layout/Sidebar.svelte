@@ -126,14 +126,8 @@
 					($user?.role === 'admin' || ($user?.permissions?.features?.notes ?? true))
 				);
 			case 'workspace':
-				return (
-					$user?.role === 'admin' ||
-					$user?.permissions?.workspace?.models ||
-					$user?.permissions?.workspace?.knowledge ||
-					$user?.permissions?.workspace?.prompts ||
-					$user?.permissions?.workspace?.tools ||
-					$user?.permissions?.workspace?.skills
-				);
+				// ClubHub: ícone de Espaço de Trabalho removido da navegação.
+				return false;
 			case 'automations':
 				return (
 					$config?.features?.enable_automations &&

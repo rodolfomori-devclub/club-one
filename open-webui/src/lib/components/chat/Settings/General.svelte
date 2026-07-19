@@ -15,7 +15,7 @@
 
 	// General
 	let themes = ['dark', 'light', 'oled-dark'];
-	let selectedTheme = 'system';
+	let selectedTheme = 'light';
 
 	let languages: Awaited<ReturnType<typeof getLanguages>> = [];
 	let lang = $i18n.language;
@@ -119,7 +119,9 @@
 	};
 
 	onMount(async () => {
-		selectedTheme = localStorage.theme ?? 'system';
+		// ClubHub: só claro/escuro — normaliza qualquer tema salvo antigo (system/oled/her).
+		selectedTheme =
+			localStorage.theme === 'dark' || localStorage.theme === 'oled-dark' ? 'dark' : 'light';
 
 		languages = await getLanguages();
 
@@ -221,13 +223,9 @@
 						placeholder={$i18n.t('Select a theme')}
 						on:change={() => themeChangeHandler(selectedTheme)}
 					>
-						<option value="system">⚙️ {$i18n.t('System')}</option>
-						<option value="dark">🌑 {$i18n.t('Dark')}</option>
-						<option value="oled-dark">🌃 {$i18n.t('OLED Dark')}</option>
+						<!-- ClubHub: apenas claro e escuro -->
 						<option value="light">☀️ {$i18n.t('Light')}</option>
-						{#if $config?.features?.enable_easter_eggs}
-							<option value="her">🌷 Her</option>
-						{/if}
+						<option value="dark">🌑 {$i18n.t('Dark')}</option>
 					</select>
 				</div>
 			</div>
