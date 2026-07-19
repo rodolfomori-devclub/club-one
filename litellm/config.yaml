@@ -17,6 +17,37 @@ model_list:
       model: openai/gpt-4o
       api_key: os.environ/OPENAI_API_KEY
 
+  # ── MasiHub demo aliases ──────────────────────────────────────────────
+  # Modelos só p/ ver o seletor agrupado (estilo Adapta) por provedor → versão.
+  # Todos roteiam p/ o endpoint fake público (respondem SEM key). Remover quando
+  # tiver as conexões reais. Providers multi-versão (GPT/Claude/Gemini) abrem flyout.
+  - model_name: claude-5-sonnet
+    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
+  - model_name: claude-4.6-sonnet
+    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
+  - model_name: claude-4.5-haiku
+    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
+  - model_name: gemini-3.5-flash
+    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
+  - model_name: gemini-3.1-pro
+    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
+  - model_name: grok-4
+    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
+  - model_name: deepseek-v3
+    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
+  - model_name: llama-4-maverick
+    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
+  - model_name: qwen-3-plus
+    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
+  - model_name: kimi-k2
+    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
+  - model_name: minimax-m2
+    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
+  - model_name: glm-5.2
+    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
+  - model_name: sonar-pro
+    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
+
 litellm_settings:
   drop_params: true
 

@@ -291,17 +291,25 @@ async def get_model_by_id(id: str, user=Depends(get_verified_user)):
 
 
 
-# Provider detection patterns for model profile images
+# Provider detection patterns for model profile images.
+# Mantido em sincronia com o front (src/lib/components/chat/ModelSelector/providers.ts):
+# as chaves = nome do arquivo static/icons/<provider>.svg.
+# Ordem importa (primeiro match vence): específico antes de genérico, "meta" por último.
 PROVIDER_PATTERNS = {
-    "openai": ["gpt-", "o1-", "o3-", "chatgpt-", "openai/", "dall-e-"],
-    "anthropic": ["claude-", "anthropic/"],
-    "google": ["gemini-", "google/", "gemini/"],
-    "perplexity": ["perplexity/"],
-    "deepseek": ["deepseek-", "deepseek/"],
-    "xai": ["grok-", "xai/"],
-    "meta": ["llama-", "meta/"],
-    "mistral": ["mistral-", "mixtral-", "mistral/"],
-    "cohere": ["command-", "cohere/"],
+    "openai": ["gpt-", "gpt4", "o1-", "o3-", "o4-", "chatgpt", "openai/", "dall-e"],
+    "anthropic": ["claude", "anthropic/"],
+    "google": ["gemini", "google/", "gemma", "palm", "bison"],
+    "xai": ["grok", "xai/", "x-ai/"],
+    "deepseek": ["deepseek"],
+    "perplexity": ["perplexity", "sonar", "pplx"],
+    "cohere": ["command-", "cohere/", "c4ai", "aya"],
+    "mistral": ["mistral", "mixtral", "ministral", "magistral", "codestral", "pixtral", "devstral"],
+    "qwen": ["qwen", "qwq", "tongyi", "alibaba/"],
+    "minimax": ["minimax", "abab"],
+    "zhipu": ["glm-", "glm4", "chatglm", "zhipu", "z-ai/", "thudm/", "bigmodel"],
+    "moonshot": ["kimi", "moonshot"],
+    "nemotron": ["nemotron", "nvidia/"],
+    "meta": ["llama", "meta/", "meta-llama"],
 }
 
 

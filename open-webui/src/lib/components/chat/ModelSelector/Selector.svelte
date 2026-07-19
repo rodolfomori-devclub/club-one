@@ -35,6 +35,9 @@
 	import ChatBubbleOval from '$lib/components/icons/ChatBubbleOval.svelte';
 
 	import ModelItem from './ModelItem.svelte';
+	import ChevronRight from '$lib/components/icons/ChevronRight.svelte';
+	import ProviderIcon from './ProviderIcon.svelte';
+	import { buildModelGroups, deriveProvider, humanVersion } from './providers';
 
 	const i18n = getContext('i18n');
 	const dispatch = createEventDispatcher();
@@ -73,6 +76,30 @@
 
 	let ollamaVersion = null;
 	let selectedModelIdx = 0;
+
+	// ── Agrupamento por provedor (estilo Adapta) ────────────────────────────
+	let expandedProvider = '';
+
+	const selectValue = (v: string) => {
+		value = v;
+		show = false;
+	};
+
+	const parseDefaults = (dm: unknown): string[] =>
+		Array.isArray(dm)
+			? (dm as string[])
+			: String(dm ?? '')
+					.split(',')
+					.map((s) => s.trim())
+					.filter(Boolean);
+
+	// Modo agrupado = sem busca/tag/filtro ativo (busca cai no modo plano).
+	$: grouped = searchValue.trim() === '' && selectedTag === '' && selectedConnectionType === '';
+	$: groups = buildModelGroups(items, {
+		defaultModels: parseDefaults($config?.default_models),
+		pinnedModels: $settings?.pinnedModels ?? [],
+		t: (k) => $i18n.t(k)
+	});
 
 	const fuse = new Fuse(
 		items.map((item) => {
@@ -395,7 +422,10 @@
 			}}
 		>
 			{#if selectedModel}
-				{selectedModel.label}
+				<span class="mh-trigger-model">
+					<ProviderIcon provider={deriveProvider(selectedModel.model)} />
+					<span class="mh-trigger-name">{humanVersion(selectedModel.model)}</span>
+				</span>
 			{:else}
 				{placeholder}
 			{/if}
@@ -448,7 +478,7 @@
 			{/if}
 
 			<div class="px-2">
-				{#if tags && items.filter((item) => !(item.model?.info?.meta?.hidden ?? false)).length > 0}
+				{#if !grouped && tags && items.filter((item) => !(item.model?.info?.meta?.hidden ?? false)).length > 0}
 					<div
 						class=" flex w-full bg-white dark:bg-gray-850 overflow-x-auto scrollbar-none font-[450] mb-0.5"
 						on:wheel={(e) => {
@@ -545,28 +575,141 @@
 			</div>
 
 			<div class="px-2.5 max-h-64 overflow-y-auto group relative">
-				{#each filteredItems as item, index}
-					<ModelItem
-						{selectedModelIdx}
-						{item}
-						{index}
-						{value}
-						{pinModelHandler}
-						{unloadModelHandler}
-						onClick={() => {
-							value = item.value;
-							selectedModelIdx = index;
+				{#if grouped}
+					{#if groups.featured.length > 0}
+						<div class="mh-section-label">{$i18n.t('Featured')}</div>
+						{#each groups.featured as entry, fi (entry.value)}
+							<ModelItem
+								item={{ value: entry.value, label: entry.version, model: entry.model }}
+								index={fi}
+								selectedModelIdx={-1}
+								badge={entry.badge}
+								descriptor={entry.descriptor}
+								{value}
+								{pinModelHandler}
+								{unloadModelHandler}
+								onClick={() => selectValue(entry.value)}
+							/>
+						{/each}
+					{/if}
 
-							show = false;
-						}}
-					/>
+					<div class="mh-section-label">{$i18n.t('Models')}</div>
+					{#each groups.providers as g (g.provider)}
+						{@const groupSelected = g.models.some((m) => m.value === value)}
+						{#if g.single}
+							<button
+								type="button"
+								class="mh-provider-row"
+								data-value={g.models[0].value}
+								on:click={() => selectValue(g.models[0].value)}
+							>
+								<ProviderIcon provider={g.provider} />
+								<span class="mh-prov-name">{g.models[0].version}</span>
+								{#if g.models[0].badge}
+									<span class="mh-badge mh-badge-{g.models[0].badge.variant}">{g.models[0].badge.label}</span>
+								{/if}
+								{#if g.models[0].descriptor}
+									<span class="mh-badge-desc">{g.models[0].descriptor}</span>
+								{/if}
+								{#if value === g.models[0].value}
+									<span class="ml-auto text-gray-500"><Check className="size-3.5" /></span>
+								{/if}
+							</button>
+						{:else if $mobile}
+							<button
+								type="button"
+								class="mh-provider-row"
+								aria-expanded={expandedProvider === g.provider}
+								on:click={() => (expandedProvider = expandedProvider === g.provider ? '' : g.provider)}
+							>
+								<ProviderIcon provider={g.provider} />
+								<span class="mh-prov-name">{g.label}</span>
+								<span class="mh-prov-count">{g.models.length}</span>
+								{#if groupSelected}<span class="mh-prov-dot" />{/if}
+								<span
+									class="mh-prov-chev"
+									style="transform: rotate({expandedProvider === g.provider ? 180 : 0}deg); transition: transform .15s"
+								>
+									<ChevronDown className="size-3.5" strokeWidth="2.5" />
+								</span>
+							</button>
+							{#if expandedProvider === g.provider}
+								{#each g.models as v (v.value)}
+									<button
+										type="button"
+										class="mh-provider-row"
+										style="padding-left: 2.75rem"
+										on:click={() => selectValue(v.value)}
+									>
+										<span class="mh-ver-name">{v.variant}</span>
+										{#if v.badge}
+											<span class="mh-badge mh-badge-{v.badge.variant}">{v.badge.label}</span>
+										{/if}
+										{#if v.descriptor}<span class="mh-badge-desc">{v.descriptor}</span>{/if}
+										{#if value === v.value}
+											<span class="ml-auto text-gray-500"><Check className="size-3.5" /></span>
+										{/if}
+									</button>
+								{/each}
+							{/if}
+						{:else}
+							<DropdownMenu.Sub>
+								<DropdownMenu.SubTrigger class="mh-provider-row">
+									<ProviderIcon provider={g.provider} />
+									<span class="mh-prov-name">{g.label}</span>
+									<span class="mh-prov-count">{g.models.length}</span>
+									{#if groupSelected}<span class="mh-prov-dot" />{/if}
+									<span class="mh-prov-chev"><ChevronRight className="size-3.5" strokeWidth="2.5" /></span>
+								</DropdownMenu.SubTrigger>
+								<DropdownMenu.SubContent
+									class="mh-model-dropdown z-50 p-1 min-w-[15rem] max-h-72 overflow-y-auto scrollbar-hidden"
+									transition={flyAndScale}
+									sideOffset={6}
+								>
+									<div class="mh-flyout-head">
+										<ProviderIcon provider={g.provider} />
+										<span>{g.label}</span>
+									</div>
+									{#each g.models as v (v.value)}
+										<DropdownMenu.Item class="mh-provider-row" on:click={() => selectValue(v.value)}>
+											<span class="mh-ver-name">{v.variant}</span>
+											{#if v.badge}
+												<span class="mh-badge mh-badge-{v.badge.variant}">{v.badge.label}</span>
+											{/if}
+											{#if v.descriptor}<span class="mh-badge-desc">{v.descriptor}</span>{/if}
+											{#if value === v.value}
+												<span class="ml-auto text-gray-500"><Check className="size-3.5" /></span>
+											{/if}
+										</DropdownMenu.Item>
+									{/each}
+								</DropdownMenu.SubContent>
+							</DropdownMenu.Sub>
+						{/if}
+					{/each}
 				{:else}
-					<div class="">
-						<div class="block px-3 py-2 text-sm text-gray-700 dark:text-gray-100">
-							{$i18n.t('No results found')}
+					{#each filteredItems as item, index}
+						<ModelItem
+							{selectedModelIdx}
+							{item}
+							{index}
+							{value}
+							{pinModelHandler}
+							{unloadModelHandler}
+							onClick={() => {
+								value = item.value;
+								selectedModelIdx = index;
+
+								show = false;
+							}}
+						/>
+					{:else}
+						<div class="">
+							<div class="block px-3 py-2 text-sm text-gray-700 dark:text-gray-100">
+								{$i18n.t('No results found')}
+							</div>
 						</div>
-					</div>
-				{/each}
+					{/each}
+				{/if}
 
 				{#if !(searchValue.trim() in $MODEL_DOWNLOAD_POOL) && searchValue && ollamaVersion && $user?.role === 'admin'}
 					<Tooltip

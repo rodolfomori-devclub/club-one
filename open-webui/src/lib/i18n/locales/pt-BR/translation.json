@@ -1,4 +1,10 @@
 {
+	"Featured": "Destaques",
+	"Highlighted": "Em destaque",
+	"New": "Novo",
+	"Trending": "Em alta",
+	"Faster": "Mais rápido",
+	"More capable": "Mais capaz",
 	"-1 for no limit, or a positive integer for a specific limit": "-1 para nenhum limite ou um inteiro positivo para um limite específico",
 	"'s', 'm', 'h', 'd', 'w' or '-1' for no expiration.": "'s', 'm', 'h', 'd', 'w' ou '-1' para sem expiração.",
 	"(e.g. `sh webui.sh --api --api-auth username_password`)": "(por exemplo, `sh webui.sh --api --api-auth username_password`)",

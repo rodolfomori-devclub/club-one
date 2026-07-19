@@ -29,6 +29,10 @@
 
 	export let onClick: () => void = () => {};
 
+	// MasiHub — badge/descritor opcionais (modo agrupado do seletor).
+	export let badge: { variant: string; label: string } | null = null;
+	export let descriptor: string | null = null;
+
 	const copyLinkHandler = async (model) => {
 		const baseUrl = window.location.origin;
 		const res = await copyToClipboard(`${baseUrl}/?model=${encodeURIComponent(model.id)}`);
@@ -91,6 +95,13 @@
 					</div>
 				</Tooltip>
 			</div>
+
+			{#if badge}
+				<span class="mh-badge mh-badge-{badge.variant} shrink-0">{badge.label}</span>
+			{/if}
+			{#if descriptor}
+				<span class="mh-badge-desc shrink-0">{descriptor}</span>
+			{/if}
 
 			<div class=" shrink-0 flex items-center gap-2">
 				{#if item.model.owned_by === 'ollama'}
