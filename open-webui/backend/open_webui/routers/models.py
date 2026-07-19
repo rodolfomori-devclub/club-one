@@ -17,8 +17,8 @@ from fastapi import (
     Response,
     status,
 )
-from fastapi.responses import RedirectResponse, StreamingResponse
-from open_webui.config import BYPASS_ADMIN_ACCESS_CONTROL
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from open_webui.config import BYPASS_ADMIN_ACCESS_CONTROL, STATIC_DIR
 from open_webui.constants import ERROR_MESSAGES
 from open_webui.events import EVENTS, publish_event
 from open_webui.env import ENABLE_PROFILE_IMAGE_URL_FORWARDING, PROFILE_IMAGE_ALLOWED_MIME_TYPES
@@ -549,6 +549,47 @@ async def get_model_by_id(id: str, user=Depends(get_verified_user), db: AsyncSes
 ###########################
 
 
+# MasiHub: detecção de provider para servir o logo como avatar do modelo.
+# Mantido em sincronia com o front (ModelSelector/providers.ts): as chaves = nome
+# do arquivo STATIC_DIR/icons/<provider>.svg. Ordem importa (primeiro match vence):
+# específico antes de genérico, "meta" (llama) por último.
+PROVIDER_PATTERNS = {
+    'openai': ['gpt-', 'gpt4', 'o1-', 'o3-', 'o4-', 'chatgpt', 'openai/', 'dall-e'],
+    'anthropic': ['claude', 'anthropic/'],
+    'google': ['gemini', 'google/', 'gemma', 'palm', 'bison'],
+    'xai': ['grok', 'xai/', 'x-ai/'],
+    'deepseek': ['deepseek'],
+    'perplexity': ['perplexity', 'sonar', 'pplx'],
+    'cohere': ['command-', 'cohere/', 'c4ai', 'aya'],
+    'mistral': ['mistral', 'mixtral', 'ministral', 'magistral', 'codestral', 'pixtral', 'devstral'],
+    'qwen': ['qwen', 'qwq', 'tongyi', 'alibaba/'],
+    'minimax': ['minimax', 'abab'],
+    'zhipu': ['glm-', 'glm4', 'chatglm', 'zhipu', 'z-ai/', 'thudm/', 'bigmodel'],
+    'moonshot': ['kimi', 'moonshot'],
+    'nemotron': ['nemotron', 'nvidia/'],
+    'meta': ['llama', 'meta/', 'meta-llama'],
+}
+
+
+def _get_provider_from_model_id(model_id: str) -> str | None:
+    """Detecta o provider a partir do ID do modelo (padrões de prefixo)."""
+    model_id_lower = (model_id or '').lower()
+    for provider, patterns in PROVIDER_PATTERNS.items():
+        for pattern in patterns:
+            if pattern in model_id_lower:
+                return provider
+    return None
+
+
+def _get_provider_logo_path(provider: str | None):
+    """Caminho do SVG do provider em STATIC_DIR/icons, ou None se não existir."""
+    if provider:
+        logo_path = STATIC_DIR / 'icons' / f'{provider}.svg'
+        if logo_path.exists():
+            return logo_path
+    return None
+
+
 @router.get('/model/profile/image')
 async def get_model_profile_image(
     request: Request,
@@ -618,6 +659,12 @@ async def get_model_profile_image(
                     url=safe_static,
                     status_code=status.HTTP_302_FOUND,
                 )
+
+    # MasiHub: fallback para o logo do provider (modelos LiteLLM e do DB sem imagem).
+    provider = _get_provider_from_model_id(id)
+    logo_path = _get_provider_logo_path(provider)
+    if logo_path:
+        return FileResponse(logo_path, media_type='image/svg+xml')
 
     return RedirectResponse(
         url='/static/favicon.png',
