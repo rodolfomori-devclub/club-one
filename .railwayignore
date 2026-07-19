@@ -1,0 +1,11 @@
+# Não subir artefatos pesados no `railway up` — todos são regenerados no build do Docker.
+**/node_modules
+**/.git
+open-webui/build
+open-webui/.svelte-kit
+open-webui/backend/data
+open-webui/static/pyodide
+open-webui/cypress
+open-webui/docs
+**/*.tsbuildinfo
+litellm

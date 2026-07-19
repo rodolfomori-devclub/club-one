@@ -1,52 +1,43 @@
-# LiteLLM proxy config for ClubHub stack
+# LiteLLM proxy — ClubHub (prod). Modelos reais dos 6 providers; chaves vêm do env
+# (setadas no serviço do Railway, puxadas do litellm antigo). master_key = LITELLM_MASTER_KEY.
 model_list:
-  # Boots and works WITHOUT any real key (LiteLLM public demo endpoint) — useful to test the stack end-to-end
-  - model_name: demo-model
-    litellm_params:
-      model: openai/fake
-      api_key: fake-key
-      api_base: https://exampleopenaiendpoint-production.up.railway.app/
-
-  # Real OpenAI models — set OPENAI_API_KEY in ./.env to enable these
-  - model_name: gpt-4o-mini
-    litellm_params:
-      model: openai/gpt-4o-mini
-      api_key: os.environ/OPENAI_API_KEY
+  # ── OpenAI ──
   - model_name: gpt-4o
-    litellm_params:
-      model: openai/gpt-4o
-      api_key: os.environ/OPENAI_API_KEY
+    litellm_params: { model: openai/gpt-4o, api_key: os.environ/OPENAI_API_KEY }
+  - model_name: gpt-4o-mini
+    litellm_params: { model: openai/gpt-4o-mini, api_key: os.environ/OPENAI_API_KEY }
+  - model_name: o1
+    litellm_params: { model: openai/o1, api_key: os.environ/OPENAI_API_KEY }
+  - model_name: o1-mini
+    litellm_params: { model: openai/o1-mini, api_key: os.environ/OPENAI_API_KEY }
 
-  # ── ClubHub demo aliases ──────────────────────────────────────────────
-  # Modelos só p/ ver o seletor agrupado (estilo Adapta) por provedor → versão.
-  # Todos roteiam p/ o endpoint fake público (respondem SEM key). Remover quando
-  # tiver as conexões reais. Providers multi-versão (GPT/Claude/Gemini) abrem flyout.
-  - model_name: claude-5-sonnet
-    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
-  - model_name: claude-4.6-sonnet
-    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
-  - model_name: claude-4.5-haiku
-    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
-  - model_name: gemini-3.5-flash
-    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
-  - model_name: gemini-3.1-pro
-    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
-  - model_name: grok-4
-    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
-  - model_name: deepseek-v3
-    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
-  - model_name: llama-4-maverick
-    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
-  - model_name: qwen-3-plus
-    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
-  - model_name: kimi-k2
-    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
-  - model_name: minimax-m2
-    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
-  - model_name: glm-5.2
-    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
+  # ── Anthropic ──
+  - model_name: claude-3-5-sonnet
+    litellm_params: { model: anthropic/claude-3-5-sonnet-latest, api_key: os.environ/ANTHROPIC_API_KEY }
+  - model_name: claude-3-5-haiku
+    litellm_params: { model: anthropic/claude-3-5-haiku-latest, api_key: os.environ/ANTHROPIC_API_KEY }
+
+  # ── Google Gemini ──
+  - model_name: gemini-2.0-flash
+    litellm_params: { model: gemini/gemini-2.0-flash, api_key: os.environ/GEMINI_API_KEY }
+  - model_name: gemini-1.5-pro
+    litellm_params: { model: gemini/gemini-1.5-pro, api_key: os.environ/GEMINI_API_KEY }
+
+  # ── DeepSeek ──
+  - model_name: deepseek-chat
+    litellm_params: { model: deepseek/deepseek-chat, api_key: os.environ/DEEPSEEK_API_KEY }
+  - model_name: deepseek-reasoner
+    litellm_params: { model: deepseek/deepseek-reasoner, api_key: os.environ/DEEPSEEK_API_KEY }
+
+  # ── Perplexity ──
+  - model_name: sonar
+    litellm_params: { model: perplexity/sonar, api_key: os.environ/PERPLEXITY_API_KEY }
   - model_name: sonar-pro
-    litellm_params: { model: openai/fake, api_key: fake-key, api_base: https://exampleopenaiendpoint-production.up.railway.app/ }
+    litellm_params: { model: perplexity/sonar-pro, api_key: os.environ/PERPLEXITY_API_KEY }
+
+  # ── xAI (Grok) ──
+  - model_name: grok-2
+    litellm_params: { model: xai/grok-2-latest, api_key: os.environ/XAI_API_KEY }
 
 litellm_settings:
   drop_params: true
