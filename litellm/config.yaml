@@ -17,7 +17,7 @@ model_list:
       model: openai/gpt-4o
       api_key: os.environ/OPENAI_API_KEY
 
-  # ── MasiHub demo aliases ──────────────────────────────────────────────
+  # ── ClubHub demo aliases ──────────────────────────────────────────────
   # Modelos só p/ ver o seletor agrupado (estilo Adapta) por provedor → versão.
   # Todos roteiam p/ o endpoint fake público (respondem SEM key). Remover quando
   # tiver as conexões reais. Providers multi-versão (GPT/Claude/Gemini) abrem flyout.
