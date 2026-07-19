@@ -553,12 +553,10 @@
 		$config?.features?.enable_image_generation &&
 		($_user.role === 'admin' || $_user?.permissions?.features?.image_generation);
 
+	// ClubHub: interpretador de código removido do produto — o toggle nunca é exibido,
+	// independente de config/permissão (inclui volumes de prod com a flag ligada).
 	let showCodeInterpreterButton = false;
-	$: showCodeInterpreterButton =
-		!$selectedTerminalId &&
-		selectedModelIds.length === codeInterpreterCapableModels.length &&
-		$config?.features?.enable_code_interpreter &&
-		($_user.role === 'admin' || $_user?.permissions?.features?.code_interpreter);
+	$: showCodeInterpreterButton = false;
 
 	// Disable code interpreter when terminal is active (mutually exclusive)
 	$: if ($selectedTerminalId && codeInterpreterEnabled) {

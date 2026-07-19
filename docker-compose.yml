@@ -77,6 +77,9 @@ services:
       # o upstream por cima quebraria as customizações. false = app se considera
       # atualizado (sem popup).
       ENABLE_VERSION_UPDATE_CHECK: "false"
+      # ── Sem interpretador/execução de código (removido do ClubHub) ──
+      ENABLE_CODE_INTERPRETER: "false"
+      ENABLE_CODE_EXECUTION: "false"
       # ── Sem login: identidade herdada da home DevClub via external-token ──
       # O OWUI valida o JWT chamando {EXTERNAL_AUTH_API_URL}/me. Default = API de
       # membros da DevClub; sobrescreva EXTERNAL_AUTH_API_URL p/ um mock local no dev.

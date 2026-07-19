@@ -396,7 +396,8 @@ except Exception:
 # Code Interpreter
 ####################################
 
-ENABLE_CODE_EXECUTION = os.getenv('ENABLE_CODE_EXECUTION', 'True').lower() == 'true'
+# ClubHub: interpretador/execução de código desligados por padrão (produto sem code sandbox).
+ENABLE_CODE_EXECUTION = os.getenv('ENABLE_CODE_EXECUTION', 'False').lower() == 'true'
 
 CODE_EXECUTION_ENGINE = os.getenv('CODE_EXECUTION_ENGINE', 'pyodide')
 
@@ -411,7 +412,7 @@ CODE_EXECUTION_JUPYTER_AUTH_PASSWORD = os.getenv('CODE_EXECUTION_JUPYTER_AUTH_PA
 
 CODE_EXECUTION_JUPYTER_TIMEOUT = int(os.getenv('CODE_EXECUTION_JUPYTER_TIMEOUT', '60'))
 
-ENABLE_CODE_INTERPRETER = os.getenv('ENABLE_CODE_INTERPRETER', 'True').lower() == 'true'
+ENABLE_CODE_INTERPRETER = os.getenv('ENABLE_CODE_INTERPRETER', 'False').lower() == 'true'
 
 ENABLE_MEMORIES = os.getenv('ENABLE_MEMORIES', 'True').lower() == 'true'
 ENABLE_MEMORY_SYSTEM_CONTEXT = os.getenv('ENABLE_MEMORY_SYSTEM_CONTEXT', 'True').lower() == 'true'
@@ -1870,7 +1871,7 @@ USER_PERMISSIONS_FEATURES_IMAGE_GENERATION = (
 )
 
 USER_PERMISSIONS_FEATURES_CODE_INTERPRETER = (
-    os.getenv('USER_PERMISSIONS_FEATURES_CODE_INTERPRETER', 'True').lower() == 'true'
+    os.getenv('USER_PERMISSIONS_FEATURES_CODE_INTERPRETER', 'False').lower() == 'true'
 )
 
 USER_PERMISSIONS_FEATURES_FOLDERS = os.getenv('USER_PERMISSIONS_FEATURES_FOLDERS', 'True').lower() == 'true'

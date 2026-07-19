@@ -1,0 +1,23 @@
+# Override SÓ para preview local do ClubHub 0.10.2 (não usar em produção).
+# Sobe num volume NOVO (config semeada pelo env, sem PersistentConfig antigo) e
+# habilita login/signup + admin inicial pra você criar uma conta e navegar sem
+# depender da home DevClub. A auth externa fica desligada no preview.
+#
+# Uso:
+#   docker compose -f docker-compose.yml -f docker-compose.preview.yml up -d --build open-webui
+services:
+  open-webui:
+    environment:
+      EXTERNAL_AUTH_ENABLED: "false"
+      ENABLE_LOGIN_FORM: "true"
+      ENABLE_SIGNUP: "true"
+      ENABLE_INITIAL_ADMIN_SIGNUP: "true"
+      WEBUI_AUTH_COOKIE_SAME_SITE: "lax"
+      WEBUI_AUTH_COOKIE_SECURE: "false"
+    volumes:
+      - openwebui_preview_data:/app/backend/data
+      - ./open-webui/static/static/custom.css:/app/build/static/custom.css:ro
+      - ./open-webui/static/static/custom.css:/app/backend/open_webui/static/custom.css:ro
+
+volumes:
+  openwebui_preview_data: {}
