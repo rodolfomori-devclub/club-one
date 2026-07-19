@@ -1,7 +1,7 @@
 /* ==========================================================================
-   MasiHub skin — identidade C·Nítido (flat premium) da masia.
+   ClubHub skin — identidade C·Nítido (flat premium) da home DevClub.
    Servido via app.html (<link href="/static/custom.css">) e bind-mount (live).
-   Tema (light/dark) vem do host (masia) → classe .dark/.light + data-theme no <html>.
+   Tema (light/dark) vem do host (home DevClub) → classe .dark/.light + data-theme no <html>.
 
    C·Nítido = preenchimento sólido + bevel de 1px + sombra neutra discreta.
    SEM gradiente, SEM blur/glass, SEM sombra quente/grande. Borda > sombra.
@@ -155,7 +155,7 @@ input[type="checkbox"]:focus-visible { --tw-ring-color: var(--nh-green-500) !imp
 
 /* ============================ 7. SIDEBAR ============================ */
 /* Sidebar = card flutuante DESCOLADO da lateral + arredondado (padrão da home
-   masia .nh-sidebar: top/left/bottom soltos, cantos redondos, card branco). */
+   home DevClub .nh-sidebar: top/left/bottom soltos, cantos redondos, card branco). */
 #sidebar { background-color: var(--nh-panel-2); }
 @media (min-width: 768px) {
   #sidebar {
@@ -394,7 +394,7 @@ input[type="password"], input[type="number"], input:not([type]) {
 
 /* ============================ 12. MARCA ============================ */
 /* Assets de marca (favicon/logo/splash/user) já foram trocados por Masi
-   (rasterizados do masi-logo.svg) — nada de "CH" pra esconder. */
+   (rasterizados do clubhub-logo.svg) — nada de "CH" pra esconder. */
 #sidebar-webui-name { margin-right: auto; text-align: left; }
 
 /* ============================ 13. MOTION ============================ */

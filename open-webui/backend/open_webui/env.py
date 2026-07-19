@@ -362,7 +362,7 @@ ENABLE_QUERIES_CACHE = os.getenv('ENABLE_QUERIES_CACHE', 'False').lower() == 'tr
 RAG_SYSTEM_CONTEXT = os.getenv('RAG_SYSTEM_CONTEXT', 'False').lower() == 'true'
 
 ####################################
-# External Authentication (MasiHub / DevClub)
+# External Authentication (ClubHub / DevClub)
 ####################################
 
 EXTERNAL_AUTH_API_URL = os.environ.get('EXTERNAL_AUTH_API_URL', '')
@@ -850,9 +850,9 @@ if LICENSE_PUBLIC_KEY:
 # WEBUI Identity
 ####################################
 
-WEBUI_NAME = os.getenv('WEBUI_NAME', 'MasiHub')
-# MasiHub: não anexa o sufixo "(Open WebUI)" ao nome customizado
-if WEBUI_NAME != 'MasiHub':
+WEBUI_NAME = os.getenv('WEBUI_NAME', 'ClubHub')
+# ClubHub: não anexa o sufixo "(Open WebUI)" ao nome customizado
+if WEBUI_NAME != 'ClubHub':
     WEBUI_NAME = WEBUI_NAME
 
 WEBUI_FAVICON_URL = 'https://openwebui.com/favicon.png'

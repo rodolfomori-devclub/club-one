@@ -46,8 +46,8 @@
 				const metaThemeColorTag = document.querySelector('meta[name="theme-color"]');
 				const prefersDarkTheme = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
-				// MasiHub embutido: o tema SEMPRE vem do host (masia) via ?theme= (semeado
-				// pelo MasiHubView). Aplica já no primeiro paint — sem flash, sempre segue a app.
+				// ClubHub embutido: o tema SEMPRE vem do host (home DevClub) via ?theme= (semeado
+				// pelo home DevClub). Aplica já no primeiro paint — sem flash, sempre segue a app.
 				const embedTheme = new URLSearchParams(location.search).get('theme');
 				if (embedTheme === 'dark' || embedTheme === 'light') {
 					localStorage.theme = embedTheme;
@@ -127,7 +127,7 @@
 			})();
 		</script>
 
-		<title>MasiHub</title>
+		<title>ClubHub</title>
 
 		%sveltekit.head%
 	</head>

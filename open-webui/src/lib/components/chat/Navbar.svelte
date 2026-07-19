@@ -20,8 +20,8 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 
-	// Embutido na masia (iframe)? Então oculta tema/temp-chat/conta no topo — o
-	// shell da masia já provê esses controles no header do MasiHubView.
+	// Embutido na home DevClub (iframe)? Então oculta tema/temp-chat/conta no topo — o
+	// shell da home DevClub já provê esses controles no header do home DevClub.
 	const embedded = typeof window !== 'undefined' && window.self !== window.top;
 
 	import ShareChatModal from '../chat/ShareChatModal.svelte';

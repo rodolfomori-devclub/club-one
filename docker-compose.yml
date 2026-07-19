@@ -71,21 +71,21 @@ services:
       WEBUI_SECRET_KEY: "${WEBUI_SECRET_KEY:-clubhub-dev-secret}"
       WEBUI_URL: "http://localhost:3002"
       # ── Rebrand ──
-      WEBUI_NAME: "MasiHub"
-      # MasiHub é um FORK — não seguir o version-check do Open WebUI upstream.
+      WEBUI_NAME: "ClubHub"
+      # ClubHub é um FORK — não seguir o version-check do Open WebUI upstream.
       # O toast "nova versão v0.10.x disponível" não faz sentido aqui e atualizar
       # o upstream por cima quebraria as customizações. false = app se considera
       # atualizado (sem popup).
       ENABLE_VERSION_UPDATE_CHECK: "false"
-      # ── Sem login: identidade herdada da masia via external-token ──
-      # O OWUI valida o JWT do Supabase chamando {EXTERNAL_AUTH_API_URL}/me.
-      # host.docker.internal:4001 = backend masi-ai-orquestration na máquina host.
+      # ── Sem login: identidade herdada da home DevClub via external-token ──
+      # O OWUI valida o JWT chamando {EXTERNAL_AUTH_API_URL}/me. Default = API de
+      # membros da DevClub; sobrescreva EXTERNAL_AUTH_API_URL p/ um mock local no dev.
       EXTERNAL_AUTH_ENABLED: "true"
-      EXTERNAL_AUTH_API_URL: "http://host.docker.internal:4001/api/masihub"
+      EXTERNAL_AUTH_API_URL: "${EXTERNAL_AUTH_API_URL:-https://api.membros.devclub.com.br/auth}"
       # Grupo default aplicado a usuários novos. Vazio = não atribui grupo (usuário
       # entra com permissões padrão). Para permissões por grupo, crie um grupo no
-      # admin do MasiHub e cole o UUID aqui.
-      EXTERNAL_AUTH_DEFAULT_GROUP_ID: "${MASIHUB_DEFAULT_GROUP_ID:-}"
+      # admin do ClubHub e cole o UUID aqui.
+      EXTERNAL_AUTH_DEFAULT_GROUP_ID: "${CLUBHUB_DEFAULT_GROUP_ID:-}"
       # Esconde o form de login/signup embutido (PersistentConfig: só pega em
       # volume novo — em volume existente, ajuste via admin settings).
       ENABLE_LOGIN_FORM: "false"

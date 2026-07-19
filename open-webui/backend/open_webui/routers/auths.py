@@ -649,7 +649,7 @@ async def ldap_auth(
 
 
 ############################
-# External Token Authentication (MasiHub / DevClub)
+# External Token Authentication (ClubHub / DevClub)
 ############################
 
 
@@ -666,7 +666,7 @@ async def external_token_auth(
     db: AsyncSession = Depends(get_async_session),
 ):
     """
-    Autentica o usuário via access_token externo (home DevClub / iframe masia).
+    Autentica o usuário via access_token externo (home DevClub / iframe home DevClub).
     O token vem do corpo (form_data) ou de cookie — nunca usa senha. Valida
     chamando {EXTERNAL_AUTH_API_URL}/me e cria/loga o usuário local (role 'user').
     """
@@ -850,7 +850,7 @@ async def signin(
                 detail=ERROR_MESSAGES.RATE_LIMIT_EXCEEDED,
             )
 
-        # MasiHub: apenas ADMIN autentica por email/senha (para configurar as chaves).
+        # ClubHub: apenas ADMIN autentica por email/senha (para configurar as chaves).
         # Usuários comuns entram exclusivamente pelo token externo (/external/token,
         # semeado pela home DevClub via iframe); login por senha é rejeitado.
         existing_user = await Users.get_user_by_email(form_data.email.lower(), db=db)

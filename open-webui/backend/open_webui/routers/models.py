@@ -549,7 +549,7 @@ async def get_model_by_id(id: str, user=Depends(get_verified_user), db: AsyncSes
 ###########################
 
 
-# MasiHub: detecção de provider para servir o logo como avatar do modelo.
+# ClubHub: detecção de provider para servir o logo como avatar do modelo.
 # Mantido em sincronia com o front (ModelSelector/providers.ts): as chaves = nome
 # do arquivo STATIC_DIR/icons/<provider>.svg. Ordem importa (primeiro match vence):
 # específico antes de genérico, "meta" (llama) por último.
@@ -660,7 +660,7 @@ async def get_model_profile_image(
                     status_code=status.HTTP_302_FOUND,
                 )
 
-    # MasiHub: fallback para o logo do provider (modelos LiteLLM e do DB sem imagem).
+    # ClubHub: fallback para o logo do provider (modelos LiteLLM e do DB sem imagem).
     provider = _get_provider_from_model_id(id)
     logo_path = _get_provider_logo_path(provider)
     if logo_path:

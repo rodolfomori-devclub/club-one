@@ -52,7 +52,7 @@
 	import 'tippy.js/dist/tippy.css';
 
 	import { executeToolServer, getBackendConfig, getModels, getVersion } from '$lib/apis';
-	import { getSessionUser, updateUserTimezone, userSignOut } from '$lib/apis/auths';
+	import { getSessionUser, updateUserTimezone, userSignOut, externalTokenAuth } from '$lib/apis/auths';
 	import { getAllTags, getChatList } from '$lib/apis/chats';
 	import { chatCompletion } from '$lib/apis/openai';
 	import {
@@ -80,6 +80,77 @@
 	import { getUserSettings } from '$lib/apis/users';
 	import dayjs from 'dayjs';
 	import { getChannels } from '$lib/apis/channels';
+
+	// ─── ClubHub embed bridge ──────────────────────────────────────────
+	// Embutido no shell da home DevClub, a identidade vem do host (JWT) por
+	// postMessage/URL — sem tela de login. O host deve enviar, para uma origem
+	// confiável, { type: 'clubhub:auth', token } e (opcional) { type: 'clubhub:theme', theme }.
+	const CLUBHUB_PARENT_ORIGINS = [
+		'http://localhost:5173',
+		'http://localhost:5174',
+		'http://localhost:3000'
+		// PROD: subdomínios *.devclub.com.br já são aceitos pelo regex abaixo.
+	];
+	const isTrustedParentOrigin = (o) =>
+		CLUBHUB_PARENT_ORIGINS.includes(o) ||
+		/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(o) ||
+		/^https:\/\/([a-z0-9-]+\.)*devclub\.com\.br$/i.test(o);
+
+	// Aplica o tema do host (classe no <html>); o custom.css cobre os grays dark.
+	function applyHostTheme(t) {
+		const dark = t === 'dark';
+		const el = document.documentElement;
+		el.classList.remove('dark', 'light', 'her', 'oled-dark');
+		el.classList.add(dark ? 'dark' : 'light');
+		el.setAttribute('data-theme', dark ? 'dark' : 'light');
+		try {
+			localStorage.theme = dark ? 'dark' : 'light';
+		} catch (e) {}
+	}
+
+	// Loga a sessão a partir de um token externo (JWT da home DevClub). true se OK.
+	async function loginWithExternalToken(token) {
+		try {
+			const sessionUser = await externalTokenAuth(token, null);
+			if (!sessionUser) return false;
+			if (sessionUser.token) localStorage.token = sessionUser.token;
+			try {
+				$socket?.emit('user-join', { auth: { token: sessionUser.token ?? localStorage.token } });
+			} catch (e) {}
+			await user.set(sessionUser);
+			await config.set(await getBackendConfig());
+			return true;
+		} catch (e) {
+			console.warn('[ClubHub] external login failed', e);
+			return false;
+		}
+	}
+
+	// Pede o token ao parent e aguarda { type: 'clubhub:auth' } (ou timeout).
+	function requestTokenFromParent(timeoutMs = 2500) {
+		return new Promise((resolve) => {
+			if (typeof window === 'undefined' || window.parent === window) return resolve(null);
+			let done = false;
+			const onMsg = (e) => {
+				if (!isTrustedParentOrigin(e.origin)) return;
+				if (e.data?.type === 'clubhub:auth' && e.data.token && !done) {
+					done = true;
+					window.removeEventListener('message', onMsg);
+					resolve(e.data.token);
+				}
+			};
+			window.addEventListener('message', onMsg);
+			try {
+				window.parent.postMessage({ type: 'clubhub:request-auth' }, '*');
+			} catch (e) {}
+			setTimeout(() => {
+				if (!done) {
+					window.removeEventListener('message', onMsg);
+					resolve(null);
+				}
+			}, timeoutMs);
+		});
+	}
 
 	const unregisterServiceWorkers = async () => {
 		if ('serviceWorker' in navigator) {
@@ -953,6 +1024,14 @@
 	};
 
 	onMount(async () => {
+		// ClubHub: escuta o host (home DevClub) — refresh de token e troca de tema.
+		window.addEventListener('message', async (e) => {
+			if (!isTrustedParentOrigin(e.origin)) return;
+			const d = e.data || {};
+			if (d.type === 'clubhub:theme' && d.theme) applyHostTheme(d.theme);
+			if (d.type === 'clubhub:auth' && d.token) await loginWithExternalToken(d.token);
+		});
+
 		const originalFetch = window.fetch.bind(window);
 		window.fetch = async (input, init) => {
 			const response = await originalFetch(input, init);
@@ -1107,7 +1186,7 @@
 		// Initialize i18n even if we didn't get a backend config,
 		// so `/error` can show something that's not `undefined`.
 
-		initI18n(localStorage?.locale);
+		initI18n(localStorage?.locale ?? 'pt-BR');
 		if (!localStorage.locale) {
 			const languages = await getLanguages();
 			const browserLanguages = navigator.languages
@@ -1169,7 +1248,12 @@
 				} else {
 					// Don't redirect if we're already on the auth page
 					// Needed because we pass in tokens from OAuth logins via URL fragments
-					if ($page.url.pathname !== '/auth') {
+					// ClubHub embed: tenta o token do host (seed na URL ou postMessage) ANTES
+					// de ir pro /auth — assim o iframe abre sem flash de tela de login.
+					const seedToken =
+						$page.url.searchParams.get('access_token') || (await requestTokenFromParent());
+					const embedded = seedToken ? await loginWithExternalToken(seedToken) : false;
+					if (!embedded && $page.url.pathname !== '/auth') {
 						await goto(`/auth?redirect=${encodedUrl}`);
 					}
 				}

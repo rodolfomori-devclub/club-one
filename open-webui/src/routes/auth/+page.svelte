@@ -14,7 +14,8 @@
 		getSessionUser,
 		userSignIn,
 		userSignUp,
-		updateUserTimezone
+		updateUserTimezone,
+		externalTokenAuth
 	} from '$lib/apis/auths';
 
 	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
@@ -113,6 +114,26 @@
 		}
 	};
 
+	const externalTokenHandler = async (): Promise<boolean> => {
+		// ClubHub: identidade vem da home DevClub (iframe). O backend lê o cookie
+		// httpOnly diretamente; os params de URL (?access_token/?api_key) são fallback.
+		const tokenFromUrl = $page.url.searchParams.get('access_token');
+		const apiKeyFromUrl = $page.url.searchParams.get('api_key');
+
+		try {
+			const sessionUser = await externalTokenAuth(tokenFromUrl, apiKeyFromUrl);
+			if (sessionUser) {
+				await setSessionUser(sessionUser, localStorage.getItem('redirectPath') || null);
+				return true;
+			}
+		} catch (error) {
+			// Sem token/cookie é o caso esperado — não mostra erro.
+			console.log('[ExternalAuth] indisponível:', error);
+		}
+
+		return false;
+	};
+
 	const oauthCallbackHandler = async () => {
 		// Get the value of the 'token' cookie
 		function getCookie(name) {
@@ -178,6 +199,12 @@
 		const error = $page.url.searchParams.get('error');
 		if (error) {
 			toast.error(error);
+		}
+
+		// ClubHub: tenta primeiro o login por token externo (home DevClub / iframe).
+		const externalAuthSuccess = await externalTokenHandler();
+		if (externalAuthSuccess) {
+			return; // usuário logado via token externo — sai cedo
 		}
 
 		await oauthCallbackHandler();

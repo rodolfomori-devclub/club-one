@@ -1,5 +1,5 @@
 /*
- * MasiHub — agrupamento do seletor de modelos por LLM (provedor) → versão,
+ * ClubHub — agrupamento do seletor de modelos por LLM (provedor) → versão,
  * no estilo adapta.org. Deriva provedor/versão/badge no front, sem backend.
  *
  * Espelha (e estende) o PROVIDER_PATTERNS do backend
