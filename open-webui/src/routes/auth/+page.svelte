@@ -14,19 +14,18 @@
 		getSessionUser,
 		userSignIn,
 		userSignUp,
-		externalTokenAuth
+		updateUserTimezone
 	} from '$lib/apis/auths';
 
 	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
 	import { WEBUI_NAME, config, user, socket } from '$lib/stores';
 
-	import { generateInitialsImage, canvasPixelTest } from '$lib/utils';
+	import { generateInitialsImage, canvasPixelTest, getUserTimezone } from '$lib/utils';
 
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import OnBoarding from '$lib/components/OnBoarding.svelte';
 	import SensitiveInput from '$lib/components/common/SensitiveInput.svelte';
 	import { redirect } from '@sveltejs/kit';
-	import { browser } from '$app/environment';
 
 	const i18n = getContext('i18n');
 
@@ -53,6 +52,12 @@
 			$socket.emit('user-join', { auth: { token: sessionUser.token } });
 			await user.set(sessionUser);
 			await config.set(await getBackendConfig());
+
+			// Update user timezone
+			const timezone = getUserTimezone();
+			if (sessionUser.token && timezone) {
+				updateUserTimezone(sessionUser.token, timezone);
+			}
 
 			if (!redirectPath) {
 				redirectPath = $page.url.searchParams.get('redirect') || '/';
@@ -108,51 +113,15 @@
 		}
 	};
 
-	// Helper to get cookie value
-	function getCookie(name) {
-		const match = document.cookie.match(
-			new RegExp('(?:^|; )' + name.replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1') + '=([^;]*)')
-		);
-		return match ? decodeURIComponent(match[1]) : null;
-	}
-
-	const externalTokenHandler = async (): Promise<boolean> => {
-		// External auth: backend reads httpOnly cookies directly
-		// We can also pass tokens via URL params as fallback
-		console.log('[ExternalAuth] Starting external token handler');
-
-		// Check for URL parameters (optional, for non-httpOnly scenarios)
-		const tokenFromUrl = $page.url.searchParams.get('access_token');
-		const apiKeyFromUrl = $page.url.searchParams.get('api_key');
-
-		if (tokenFromUrl) {
-			console.log('[ExternalAuth] Found access_token in URL params');
-		}
-
-		try {
-			console.log(
-				'[ExternalAuth] Calling externalTokenAuth API (backend will read httpOnly cookies)...'
-			);
-			// Pass URL params if available, otherwise backend reads cookies
-			const sessionUser = await externalTokenAuth(tokenFromUrl, apiKeyFromUrl);
-			console.log('[ExternalAuth] API response:', sessionUser);
-
-			if (sessionUser) {
-				console.log('[ExternalAuth] Session user received, setting session...');
-				await setSessionUser(sessionUser, localStorage.getItem('redirectPath') || null);
-				return true;
-			} else {
-				console.log('[ExternalAuth] No session user returned from API');
-			}
-		} catch (error) {
-			// Don't show error toast if it's just "no token" - that's expected when cookies aren't present
-			console.log('[ExternalAuth] External auth not available:', error);
-		}
-
-		return false;
-	};
-
 	const oauthCallbackHandler = async () => {
+		// Get the value of the 'token' cookie
+		function getCookie(name) {
+			const match = document.cookie.match(
+				new RegExp('(?:^|; )' + name.replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1') + '=([^;]*)')
+			);
+			return match ? decodeURIComponent(match[1]) : null;
+		}
+
 		const token = getCookie('token');
 		if (!token) {
 			return;
@@ -182,10 +151,10 @@
 
 			if (isDarkMode) {
 				const darkImage = new Image();
-				darkImage.src = `${WEBUI_BASE_URL}/static/favicon.png`;
+				darkImage.src = `${WEBUI_BASE_URL}/static/favicon-dark.png`;
 
 				darkImage.onload = () => {
-					logo.src = `${WEBUI_BASE_URL}/static/favicon.png`;
+					logo.src = `${WEBUI_BASE_URL}/static/favicon-dark.png`;
 					logo.style.filter = ''; // Ensure no inversion is applied if favicon-dark.png exists
 				};
 
@@ -211,19 +180,34 @@
 			toast.error(error);
 		}
 
-		// Check for external access_token cookie first (from external app redirect)
-		const externalAuthSuccess = await externalTokenHandler();
-		if (externalAuthSuccess) {
-			return; // User is logged in via external token, exit early
-		}
-
 		await oauthCallbackHandler();
 		form = $page.url.searchParams.get('form');
+
+		// Auto-redirect to SSO when OAUTH_AUTO_REDIRECT is enabled and the
+		// deployment is unambiguously SSO-only (single provider, no login form,
+		// no LDAP). Suppressed by ?form=, ?error=, onboarding, trusted-header
+		// auth, or an existing session/token.
+		if ($config?.oauth?.auto_redirect && !form && !error) {
+			const providers = Object.keys($config?.oauth?.providers ?? {});
+			if (
+				providers.length === 1 &&
+				$config?.features?.auth !== false &&
+				$config?.features?.enable_login_form === false &&
+				!$config?.features?.enable_ldap &&
+				!$config?.features?.auth_trusted_header &&
+				!$config?.onboarding &&
+				!localStorage.token &&
+				!document.cookie.split('; ').some((c) => c.startsWith('token='))
+			) {
+				window.location.href = `${WEBUI_BASE_URL}/oauth/${providers[0]}/login`;
+				return;
+			}
+		}
 
 		loaded = true;
 		setLogoImage();
 
-		if (($config?.features.auth_trusted_header ?? false) || $config?.features.auth === false) {
+		if (($config?.features?.auth_trusted_header ?? false) || $config?.features?.auth === false) {
 			await signInHandler();
 		} else {
 			onboarding = $config?.onboarding ?? false;
@@ -272,7 +256,7 @@
 					</div>
 				{:else}
 					<div class="my-auto flex flex-col justify-center items-center">
-						<div class=" sm:max-w-md my-auto pb-10 w-full dark:text-gray-100">
+						<div id="auth-login-card" class=" sm:max-w-md my-auto pb-10 w-full dark:text-gray-100">
 							{#if $config?.metadata?.auth_logo_position === 'center'}
 								<div class="flex justify-center mb-6">
 									<img
@@ -280,7 +264,7 @@
 										crossorigin="anonymous"
 										src="{WEBUI_BASE_URL}/static/favicon.png"
 										class="size-24 rounded-full"
-										alt=""
+										alt="{$WEBUI_NAME} logo"
 									/>
 								</div>
 							{/if}
@@ -325,7 +309,7 @@
 													bind:value={name}
 													type="text"
 													id="name"
-													class="my-0.5 w-full text-sm outline-hidden bg-transparent border-gray-600 placeholder:text-gray-300 dark:placeholder:text-gray-600"
+													class="my-0.5 w-full text-sm outline-hidden bg-transparent placeholder:text-gray-300 dark:placeholder:text-gray-600"
 													autocomplete="name"
 													placeholder={$i18n.t('Enter Your Full Name')}
 													required
@@ -379,7 +363,9 @@
 												placeholder={$i18n.t('Enter Your Password')}
 												autocomplete={mode === 'signup' ? 'new-password' : 'current-password'}
 												name="password"
+												screenReader={true}
 												required
+												aria-required="true"
 											/>
 										</div>
 
@@ -475,6 +461,7 @@
 												xmlns="http://www.w3.org/2000/svg"
 												viewBox="0 0 48 48"
 												class="size-6 mr-3"
+												aria-hidden="true"
 											>
 												<path
 													fill="#EA4335"
@@ -504,6 +491,7 @@
 												xmlns="http://www.w3.org/2000/svg"
 												viewBox="0 0 21 21"
 												class="size-6 mr-3"
+												aria-hidden="true"
 											>
 												<rect x="1" y="1" width="9" height="9" fill="#f25022" /><rect
 													x="1"
@@ -534,6 +522,7 @@
 												xmlns="http://www.w3.org/2000/svg"
 												viewBox="0 0 24 24"
 												class="size-6 mr-3"
+												aria-hidden="true"
 											>
 												<path
 													fill="currentColor"
@@ -557,6 +546,7 @@
 												stroke-width="1.5"
 												stroke="currentColor"
 												class="size-6 mr-3"
+												aria-hidden="true"
 											>
 												<path
 													stroke-linecap="round"

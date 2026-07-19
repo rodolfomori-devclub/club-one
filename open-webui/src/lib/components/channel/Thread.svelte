@@ -18,6 +18,7 @@
 	export let channel = null;
 
 	export let onClose = () => {};
+	export let onPin = () => {};
 
 	let messages = null;
 	let top = false;
@@ -35,7 +36,9 @@
 	}
 
 	const scrollToBottom = () => {
-		messagesContainerElement.scrollTop = messagesContainerElement.scrollHeight;
+		if (messagesContainerElement) {
+			messagesContainerElement.scrollTop = messagesContainerElement.scrollHeight;
+		}
 	};
 
 	const initHandler = async () => {
@@ -84,6 +87,10 @@
 					}
 				}
 			} else if (type === 'message:delete') {
+				if (data.id === threadId) {
+					onClose();
+				}
+
 				if (messages) {
 					messages = messages.filter((message) => message.id !== data.id);
 				}
@@ -190,6 +197,7 @@
 					{messages}
 					{replyToMessage}
 					thread={true}
+					{onPin}
 					onReply={async (message) => {
 						replyToMessage = message;
 
@@ -223,6 +231,7 @@
 					bind:replyToMessage
 					bind:chatInputElement
 					id={threadId}
+					{channel}
 					disabled={!channel?.write_access}
 					placeholder={!channel?.write_access
 						? $i18n.t('You do not have permission to send messages in this thread.')

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
 	import { marked } from 'marked';
+	import DOMPurify from 'dompurify';
 
 	import { onMount, getContext, tick, createEventDispatcher } from 'svelte';
 	import { blur, fade } from 'svelte/transition';
@@ -46,7 +47,9 @@
 	export let messageInput = null;
 
 	export let selectedToolIds = [];
+	export let selectedSkillIds = [];
 	export let selectedFilterIds = [];
+	export let pendingOAuthTools = [];
 
 	export let showCommands = false;
 
@@ -54,10 +57,14 @@
 	export let codeInterpreterEnabled = false;
 	export let webSearchEnabled = false;
 
+	export let onUpload: Function = (e) => {};
 	export let onSelect = (e) => {};
 	export let onChange = (e) => {};
+	export let onWebSearchToggle: Function = () => {};
 
 	export let toolServers = [];
+
+	export let dragged = false;
 
 	let models = [];
 	let selectedModelIdx = 0;
@@ -67,6 +74,15 @@
 	}
 
 	$: models = selectedModels.map((id) => $_models.find((m) => m.id === id));
+
+	// True when viewing a shared folder the current user doesn't own AND lacks write access
+	$: folderReadOnly =
+		$selectedFolder != null &&
+		$selectedFolder.user_id !== $user?.id &&
+		$selectedFolder.permission !== 'write';
+
+	// True when the current user does NOT own this folder (hide management menus)
+	$: folderNotOwned = $selectedFolder != null && $selectedFolder.user_id !== $user?.id;
 </script>
 
 <div class="m-auto w-full max-w-6xl px-2 @2xl:px-20 translate-y-6 py-24 text-center">
@@ -89,6 +105,7 @@
 			{#if $selectedFolder}
 				<FolderTitle
 					folder={$selectedFolder}
+					readOnly={folderNotOwned}
 					onUpdate={async (folder) => {
 						await chats.set(await getChatList(localStorage.token, $currentChatPage));
 						currentChatPage.set(1);
@@ -101,7 +118,7 @@
 					}}
 				/>
 			{:else}
-				<div class="flex flex-row justify-center gap-3 @sm:gap-3.5 w-fit px-5 max-w-xl">
+				<div class="flex flex-row justify-center gap-2.5 @sm:gap-3 w-fit px-5 max-w-xl">
 					<div class="flex shrink-0 justify-center">
 						<div class="flex -space-x-4 mb-0.5" in:fade={{ duration: 100 }}>
 							{#each models as model, modelIdx}
@@ -125,6 +142,9 @@
 											class=" size-9 @sm:size-10 rounded-full border-[1px] border-gray-100 dark:border-none"
 											aria-hidden="true"
 											draggable="false"
+											on:error={(e) => {
+												e.currentTarget.src = '/favicon.png';
+											}}
 										/>
 									</button>
 								</Tooltip>
@@ -157,20 +177,24 @@
 						{#if models[selectedModelIdx]?.info?.meta?.description ?? null}
 							<Tooltip
 								className=" w-fit"
-								content={marked.parse(
-									sanitizeResponseContent(
-										models[selectedModelIdx]?.info?.meta?.description ?? ''
-									).replaceAll('\n', '<br>')
+								content={DOMPurify.sanitize(
+									marked.parse(
+										sanitizeResponseContent(
+											models[selectedModelIdx]?.info?.meta?.description ?? ''
+										).replaceAll('\n', '<br>')
+									)
 								)}
 								placement="top"
 							>
 								<div
 									class="mt-0.5 px-2 text-sm font-normal text-gray-500 dark:text-gray-400 line-clamp-2 max-w-xl markdown"
 								>
-									{@html marked.parse(
-										sanitizeResponseContent(
-											models[selectedModelIdx]?.info?.meta?.description ?? ''
-										).replaceAll('\n', '<br>')
+									{@html DOMPurify.sanitize(
+										marked.parse(
+											sanitizeResponseContent(
+												models[selectedModelIdx]?.info?.meta?.description ?? ''
+											).replaceAll('\n', '<br>')
+										)
 									)}
 								</div>
 							</Tooltip>
@@ -197,32 +221,36 @@
 			{/if}
 
 			<div class="text-base font-normal @md:max-w-3xl w-full py-3 {atSelectedModel ? 'mt-2' : ''}">
-				<MessageInput
-					bind:this={messageInput}
-					{history}
-					{selectedModels}
-					bind:files
-					bind:prompt
-					bind:autoScroll
-					bind:selectedToolIds
-					bind:selectedFilterIds
-					bind:imageGenerationEnabled
-					bind:codeInterpreterEnabled
-					bind:webSearchEnabled
-					bind:atSelectedModel
-					bind:showCommands
-					{toolServers}
-					{stopResponse}
-					{createMessagePair}
-					placeholder={$i18n.t('How can I help you today?')}
-					{onChange}
-					on:upload={(e) => {
-						dispatch('upload', e.detail);
-					}}
-					on:submit={(e) => {
-						dispatch('submit', e.detail);
-					}}
-				/>
+				{#if !($selectedFolder && folderReadOnly)}
+					<MessageInput
+						bind:this={messageInput}
+						{history}
+						{selectedModels}
+						bind:files
+						bind:prompt
+						bind:autoScroll
+						bind:selectedToolIds
+						bind:selectedSkillIds
+						bind:selectedFilterIds
+						bind:imageGenerationEnabled
+						bind:codeInterpreterEnabled
+						bind:webSearchEnabled
+						bind:atSelectedModel
+						bind:showCommands
+						bind:dragged
+						{pendingOAuthTools}
+						{toolServers}
+						{stopResponse}
+						{createMessagePair}
+						placeholder={$i18n.t('How can I help you today?')}
+						{onChange}
+						{onUpload}
+						{onWebSearchToggle}
+						on:submit={(e) => {
+							dispatch('submit', e.detail);
+						}}
+					/>
+				{/if}
 			</div>
 		</div>
 	</div>

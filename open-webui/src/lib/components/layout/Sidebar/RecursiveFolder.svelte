@@ -11,14 +11,16 @@
 	import { goto } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
 
-	import { chatId, mobile, selectedFolder, showSidebar } from '$lib/stores';
+	import { chatId, mobile, selectedFolder, showSidebar, user } from '$lib/stores';
 
 	import {
 		deleteFolderById,
 		updateFolderIsExpandedById,
 		updateFolderById,
 		updateFolderParentIdById,
-		getFolderById
+		getFolderById,
+		createNewFolder,
+		getSharedFolderChats
 	} from '$lib/apis/folders';
 	import {
 		getChatById,
@@ -38,6 +40,7 @@
 
 	import ChatItem from './ChatItem.svelte';
 	import FolderMenu from './Folders/FolderMenu.svelte';
+	import FolderShareModal from './Folders/FolderShareModal.svelte';
 	import DeleteConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 	import FolderModal from './Folders/FolderModal.svelte';
 	import Emoji from '$lib/components/common/Emoji.svelte';
@@ -62,7 +65,11 @@
 	let folderElement;
 
 	let showFolderModal = false;
+	let showShareModal = false;
 	let edit = false;
+
+	let showCreateSubFolderModal = false;
+	let createSubFolderParentId = null;
 
 	let draggedOver = false;
 	let dragged = false;
@@ -74,7 +81,7 @@
 	const onDragOver = (e) => {
 		e.preventDefault();
 		e.stopPropagation();
-		if (dragged || parentDragged) {
+		if (dragged || parentDragged || folders[folderId]?.shared) {
 			return;
 		}
 		draggedOver = true;
@@ -154,6 +161,11 @@
 									return null;
 								});
 								if (!chat && item) {
+									if (!($user?.role === 'admin' || ($user?.permissions?.chat?.import ?? true))) {
+										toast.error($i18n.t('Access prohibited'));
+										return;
+									}
+
 									chat = await importChats(localStorage.token, [
 										{
 											chat: item.chat,
@@ -169,29 +181,35 @@
 									});
 								}
 
-								// Move the chat
-								const res = await updateChatFolderIdById(
-									localStorage.token,
-									chat.id,
-									folderId
-								).catch((error) => {
-									toast.error(`${error}`);
-									return null;
-								});
+								if (chat) {
+									// Move the chat
+									const res = await updateChatFolderIdById(
+										localStorage.token,
+										chat.id,
+										folderId
+									).catch((error) => {
+										toast.error(`${error}`);
+										return null;
+									});
 
-								onItemMove({
-									originFolderId: chat.folder_id,
-									targetFolderId: folderId,
-									e
-								});
+									onItemMove({
+										originFolderId: chat.folder_id,
+										targetFolderId: folderId,
+										e
+									});
 
-								if (res) {
-									dispatch('update');
+									if (res) {
+										dispatch('update');
+									}
 								}
 							}
 						} catch (error) {
 							console.log('Error parsing dataTransfer:', error);
 						}
+
+						// Only process the first non-file item; all share the same
+						// text/plain payload, so continuing would duplicate the move.
+						break;
 					}
 				}
 			}
@@ -229,6 +247,7 @@
 				id: folderId
 			})
 		);
+		event.dataTransfer.setData('application/x-open-webui-drag', '');
 
 		dragged = true;
 		folderElement.style.opacity = '0.5'; // Optional: Visual cue to show it's being dragged
@@ -370,10 +389,18 @@
 	export const setFolderItems = async () => {
 		await tick();
 		if (open) {
-			chats = await getChatListByFolderId(localStorage.token, folderId).catch((error) => {
-				toast.error(`${error}`);
-				return [];
-			});
+			// Always use getSharedFolderChats so owners also see chats
+			// created by users who have write access to this folder.
+			try {
+				const res = await getSharedFolderChats(localStorage.token, folderId);
+				chats = res?.chats ?? [];
+			} catch (error) {
+				// Fallback to regular API
+				chats = await getChatListByFolderId(localStorage.token, folderId).catch((error) => {
+					toast.error(`${error}`);
+					return [];
+				});
+			}
 		} else {
 			chats = null;
 		}
@@ -414,6 +441,30 @@
 
 		saveAs(blob, `folder-${folders[folderId].name}-export-${Date.now()}.json`);
 	};
+
+	const createSubFolderHandler = async ({ name, meta, data, parent_id }) => {
+		if (name === '') {
+			toast.error($i18n.t('Folder name cannot be empty.'));
+			return;
+		}
+
+		name = name.trim();
+
+		const res = await createNewFolder(localStorage.token, {
+			name,
+			data,
+			meta,
+			parent_id
+		}).catch((error) => {
+			toast.error(`${error}`);
+			return null;
+		});
+
+		if (res) {
+			toast.success($i18n.t('Folder created successfully'));
+			dispatch('update');
+		}
+	};
 </script>
 
 <DeleteConfirmDialog
@@ -444,6 +495,14 @@
 
 <FolderModal bind:show={showFolderModal} edit={true} {folderId} onSubmit={updateHandler} />
 
+<FolderModal
+	bind:show={showCreateSubFolderModal}
+	parentId={createSubFolderParentId}
+	onSubmit={createSubFolderHandler}
+/>
+
+<FolderShareModal bind:show={showShareModal} folder={folders[folderId]} />
+
 {#if dragged && x && y}
 	<DragGhost {x} {y}>
 		<div class=" bg-black/80 backdrop-blur-2xl px-2 py-1 rounded-lg w-fit max-w-40">
@@ -457,7 +516,7 @@
 	</DragGhost>
 {/if}
 
-<div bind:this={folderElement} class="relative {className}" draggable="true">
+<div bind:this={folderElement} class="relative {className}" draggable={!folders[folderId]?.shared}>
 	{#if draggedOver}
 		<div
 			class="absolute top-0 left-0 w-full h-full rounded-xs bg-gray-100/50 dark:bg-gray-700/20 bg-opacity-50 dark:bg-opacity-10 z-50 pointer-events-none touch-none"
@@ -481,6 +540,7 @@
 					? 'bg-gray-100 dark:bg-gray-900 selected'
 					: ''}"
 				on:dblclick={(e) => {
+					if (folders[folderId]?.shared) return;
 					if (clickTimer) {
 						clearTimeout(clickTimer); // cancel the single-click action
 						clickTimer = null;
@@ -501,7 +561,7 @@
 						});
 
 						if (folder) {
-							await selectedFolder.set(folder);
+							await selectedFolder.set({ ...folders[folderId], ...folder });
 						}
 
 						await goto('/');
@@ -580,25 +640,34 @@
 					{/if}
 				</div>
 
-				<button
-					class="absolute z-10 right-2 invisible group-hover:visible self-center flex items-center dark:text-gray-300"
-				>
-					<FolderMenu
-						onEdit={() => {
-							showFolderModal = true;
-						}}
-						onDelete={() => {
-							showDeleteConfirm = true;
-						}}
-						onExport={() => {
-							exportHandler();
-						}}
+				{#if !folders[folderId]?.shared}
+					<button
+						class="absolute z-10 right-2 invisible group-hover:visible self-center flex items-center dark:text-gray-300"
 					>
-						<div class="p-1 dark:hover:bg-gray-850 rounded-lg touch-auto">
-							<EllipsisHorizontal className="size-4" strokeWidth="2.5" />
-						</div>
-					</FolderMenu>
-				</button>
+						<FolderMenu
+							onEdit={() => {
+								showFolderModal = true;
+							}}
+							onShare={() => {
+								showShareModal = true;
+							}}
+							onDelete={() => {
+								showDeleteConfirm = true;
+							}}
+							onExport={() => {
+								exportHandler();
+							}}
+							onCreateSubFolder={() => {
+								createSubFolderParentId = folderId;
+								showCreateSubFolderModal = true;
+							}}
+						>
+							<div class="p-1 dark:hover:bg-gray-850 rounded-lg touch-auto">
+								<EllipsisHorizontal className="size-4" strokeWidth="2.5" />
+							</div>
+						</FolderMenu>
+					</button>
+				{/if}
 			</div>
 		</div>
 
@@ -643,6 +712,12 @@
 						<ChatItem
 							id={chat.id}
 							title={chat.title}
+							createdAt={chat.created_at}
+							updatedAt={chat.updated_at}
+							lastReadAt={chat.last_read_at}
+							ownerName={folders[folderId]?.shared ? (chat.owner_name ?? null) : null}
+							ownerUserId={folders[folderId]?.shared && chat.owner_name ? chat.user_id : null}
+							readonly={chat.user_id !== $user?.id}
 							{shiftKey}
 							on:change={(e) => {
 								dispatch('change', e.detail);

@@ -1,52 +1,60 @@
-import logging
-from typing import Optional
+from __future__ import annotations
 
-from open_webui.retrieval.web.main import SearchResult, get_filtered_results
+import logging
+import urllib.request
+
 from ddgs import DDGS
 from ddgs.exceptions import RatelimitException
-from open_webui.env import SRC_LOG_LEVELS
+from open_webui.retrieval.web.main import SearchResult, get_filtered_results
 
 log = logging.getLogger(__name__)
-log.setLevel(SRC_LOG_LEVELS["RAG"])
 
 
 def search_duckduckgo(
     query: str,
     count: int,
-    filter_list: Optional[list[str]] = None,
-    concurrent_requests: Optional[int] = None,
+    filter_list: list[str | None] = None,
+    concurrent_requests: int | None = None,
+    backend: str | None = 'auto',
 ) -> list[SearchResult]:
     """
     Search using DuckDuckGo's Search API and return the results as a list of SearchResult objects.
     Args:
         query (str): The query to search for
         count (int): The number of results to return
+        backend (str): The search backend to use (auto, duckduckgo, google, brave, etc.)
 
     Returns:
         list[SearchResult]: A list of search results
     """
-    # Use the DDGS context manager to create a DDGS object
+    # The ddgs library (primp-based) does not auto-detect proxy env vars.
+    # Resolve via stdlib getproxies() — same pattern as the other loaders.
+    env_proxies = urllib.request.getproxies()
+    proxy = env_proxies.get('https') or env_proxies.get('http')
     search_results = []
-    with DDGS() as ddgs:
+    with DDGS(proxy=proxy) as ddgs:
         if concurrent_requests:
             ddgs.threads = concurrent_requests
 
         # Use the ddgs.text() method to perform the search
         try:
-            search_results = ddgs.text(
-                query, safesearch="moderate", max_results=count, backend="lite"
-            )
+            kwargs = {'safesearch': 'moderate', 'max_results': count}
+            if backend and backend != 'auto':
+                kwargs['backend'] = backend
+            results = ddgs.text(query, **kwargs)
+            search_results = results if results is not None else []
         except RatelimitException as e:
-            log.error(f"RatelimitException: {e}")
+            log.error(f'RatelimitException: {e}')
+            search_results = []
     if filter_list:
         search_results = get_filtered_results(search_results, filter_list)
 
     # Return the list of search results
     return [
         SearchResult(
-            link=result["href"],
-            title=result.get("title"),
-            snippet=result.get("body"),
+            link=result['href'],
+            title=result.get('title'),
+            snippet=result.get('body'),
         )
         for result in search_results
     ]

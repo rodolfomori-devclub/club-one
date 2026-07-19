@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext } from 'svelte';
+	import { getContext, onDestroy } from 'svelte';
 	const i18n = getContext('i18n');
 
 	import dayjs from 'dayjs';
@@ -30,7 +30,8 @@
 	let total = null;
 
 	let query = '';
-	let orderBy = `group_id:${groupId}`; // default sort key
+	let searchDebounceTimer: ReturnType<typeof setTimeout>;
+	let orderBy = groupId ? `group_id:${groupId}` : 'last_active_at'; // default sort key
 	let direction = 'desc'; // default sort order
 
 	let page = 1;
@@ -42,6 +43,7 @@
 			orderBy = key;
 			direction = 'asc';
 		}
+		page = 1;
 	};
 
 	const getUserList = async () => {
@@ -75,17 +77,27 @@
 			});
 		}
 
-		page = 1;
 		getUserList();
 	};
 
-	$: if (page !== null && query !== null && orderBy !== null && direction !== null) {
+	$: if (page !== null && orderBy !== null && direction !== null) {
 		getUserList();
 	}
 
-	$: if (query) {
-		page = 1;
-	}
+	const handleSearchInput = () => {
+		clearTimeout(searchDebounceTimer);
+		searchDebounceTimer = setTimeout(() => {
+			if (page !== 1) {
+				page = 1;
+			} else {
+				getUserList();
+			}
+		}, 300);
+	};
+
+	onDestroy(() => {
+		clearTimeout(searchDebounceTimer);
+	});
 </script>
 
 <div class=" max-h-full h-full w-full flex flex-col overflow-y-hidden">
@@ -97,6 +109,7 @@
 			<input
 				class=" w-full text-sm pr-4 rounded-r-xl outline-hidden bg-transparent"
 				bind:value={query}
+				on:input={handleSearchInput}
 				placeholder={$i18n.t('Search')}
 			/>
 		</div>

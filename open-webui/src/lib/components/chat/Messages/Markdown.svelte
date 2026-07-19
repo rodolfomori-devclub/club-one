@@ -1,16 +1,40 @@
-<script>
+<script context="module">
 	import { marked } from 'marked';
-	import { replaceTokens, processResponseContent } from '$lib/utils';
-	import { user } from '$lib/stores';
 
 	import markedExtension from '$lib/utils/marked/extension';
 	import markedKatexExtension from '$lib/utils/marked/katex-extension';
 	import { disableSingleTilde } from '$lib/utils/marked/strikethrough-extension';
 	import { mentionExtension } from '$lib/utils/marked/mention-extension';
-
-	import MarkdownTokens from './Markdown/MarkdownTokens.svelte';
+	import colonFenceExtension from '$lib/utils/marked/colon-fence-extension';
 	import footnoteExtension from '$lib/utils/marked/footnote-extension';
 	import citationExtension from '$lib/utils/marked/citation-extension';
+
+	const options = {
+		throwOnError: false,
+		breaks: true
+	};
+
+	marked.use(markedKatexExtension(options));
+	marked.use(markedExtension(options));
+	marked.use(citationExtension(options));
+	marked.use(footnoteExtension(options));
+	marked.use(colonFenceExtension(options));
+	marked.use(disableSingleTilde);
+	marked.use({
+		extensions: [
+			mentionExtension({ triggerChar: '@' }),
+			mentionExtension({ triggerChar: '#' }),
+			mentionExtension({ triggerChar: '$' })
+		]
+	});
+</script>
+
+<script>
+	import { onDestroy } from 'svelte';
+	import { replaceTokens, processResponseContent } from '$lib/utils';
+	import { user } from '$lib/stores';
+
+	import MarkdownTokens from './Markdown/MarkdownTokens.svelte';
 
 	export let id = '';
 	export let content;
@@ -22,6 +46,7 @@
 	export let paragraphTag = 'p';
 	export let editCodeBlock = true;
 	export let topPadding = false;
+	export let allowEmbeds = true;
 
 	export let sourceIds = [];
 
@@ -34,28 +59,42 @@
 	export let onTaskClick = () => {};
 
 	let tokens = [];
+	let pendingUpdate = null;
+	let lastContent = '';
+	let lastParsedContent = '';
 
-	const options = {
-		throwOnError: false,
-		breaks: true
+	const parseTokens = () => {
+		if (content === lastContent) return;
+		lastContent = content;
+
+		const processed = replaceTokens(processResponseContent(content), model?.name, $user?.name);
+		if (processed === lastParsedContent) return;
+		lastParsedContent = processed;
+
+		tokens = marked.lexer(processed);
 	};
 
-	marked.use(markedKatexExtension(options));
-	marked.use(markedExtension(options));
-	marked.use(citationExtension(options));
-	marked.use(footnoteExtension(options));
-	marked.use(disableSingleTilde);
-	marked.use({
-		extensions: [mentionExtension({ triggerChar: '@' }), mentionExtension({ triggerChar: '#' })]
-	});
-
-	$: (async () => {
+	const updateHandler = (content) => {
 		if (content) {
-			tokens = marked.lexer(
-				replaceTokens(processResponseContent(content), model?.name, $user?.name)
-			);
+			if (done) {
+				cancelAnimationFrame(pendingUpdate);
+				pendingUpdate = null;
+				parseTokens();
+			} else if (!pendingUpdate) {
+				pendingUpdate = requestAnimationFrame(() => {
+					pendingUpdate = null;
+					parseTokens();
+				});
+			}
 		}
-	})();
+	};
+
+	$: updateHandler(content);
+
+	// Throttle parsing to once per animation frame while streaming
+	onDestroy(() => {
+		cancelAnimationFrame(pendingUpdate);
+	});
 </script>
 
 {#key id}
@@ -69,6 +108,7 @@
 		{editCodeBlock}
 		{sourceIds}
 		{topPadding}
+		{allowEmbeds}
 		{onTaskClick}
 		{onSourceClick}
 		{onSave}

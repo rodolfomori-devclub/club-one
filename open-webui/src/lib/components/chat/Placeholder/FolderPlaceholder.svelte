@@ -1,6 +1,10 @@
-<script>
+<script lang="ts">
 	import { getContext, onMount } from 'svelte';
-	const i18n = getContext('i18n');
+	import type { Writable } from 'svelte/store';
+
+	const i18n: Writable<any> = getContext('i18n');
+
+	import { user } from '$lib/stores';
 
 	import { fade } from 'svelte/transition';
 
@@ -8,36 +12,27 @@
 	import FolderKnowledge from './FolderKnowledge.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import { getChatListByFolderId } from '$lib/apis/chats';
+	import { getSharedFolderChats } from '$lib/apis/folders';
 
-	export let folder = null;
+	export let folder: any = null;
 
 	let selectedTab = 'chats';
 
 	let page = 1;
 
-	let chats = null;
+	let chats: any[] | null = null;
 	let chatListLoading = false;
 	let allChatsLoaded = false;
 
+	$: showOwnerInfo = Boolean(
+		folder?.shared ||
+		(folder?.user_id && folder.user_id !== $user?.id) ||
+		(folder?.access_grants?.length ?? 0) > 0
+	);
+
 	const loadChats = async () => {
-		chatListLoading = true;
-
-		page += 1;
-
-		let newChatList = [];
-
-		newChatList = await getChatListByFolderId(localStorage.token, folder.id, page).catch(
-			(error) => {
-				console.error(error);
-				return [];
-			}
-		);
-
-		// once the bottom of the list has been reached (no results) there is no need to continue querying
-		allChatsLoaded = newChatList.length === 0;
-		chats = [...chats, ...newChatList];
-
-		chatListLoading = false;
+		// getSharedFolderChats returns all users' chats in one shot; no pagination
+		allChatsLoaded = true;
 	};
 
 	const setChatList = async () => {
@@ -47,12 +42,21 @@
 		chatListLoading = false;
 
 		if (folder && folder.id) {
-			const res = await getChatListByFolderId(localStorage.token, folder.id, page);
-
-			if (res) {
-				chats = res;
+			// Always use the shared folder endpoint so owners also see
+			// chats created by users who have write access to this folder.
+			const res = await getSharedFolderChats(localStorage.token, folder.id).catch((error) => {
+				console.error(error);
+				return null;
+			});
+			if (res && res.chats) {
+				chats = res.chats;
+				allChatsLoaded = true;
 			} else {
-				chats = [];
+				// Fallback to regular API (e.g. if user has no shared access)
+				const fallback = await getChatListByFolderId(localStorage.token, folder.id, page).catch(
+					() => []
+				);
+				chats = fallback || [];
 			}
 		} else {
 			chats = [];
@@ -98,7 +102,13 @@
 			<FolderKnowledge />
 		{:else if selectedTab === 'chats'}
 			{#if chats !== null}
-				<ChatList {chats} {chatListLoading} {allChatsLoaded} loadHandler={loadChats} />
+				<ChatList
+					{chats}
+					{chatListLoading}
+					{allChatsLoaded}
+					loadHandler={loadChats}
+					{showOwnerInfo}
+				/>
 			{:else}
 				<div class="py-10">
 					<Spinner />

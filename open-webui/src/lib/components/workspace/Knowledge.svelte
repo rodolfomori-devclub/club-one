@@ -1,19 +1,20 @@
 <script lang="ts">
-	import Fuse from 'fuse.js';
-
 	import dayjs from 'dayjs';
 	import relativeTime from 'dayjs/plugin/relativeTime';
 	dayjs.extend(relativeTime);
 
 	import { toast } from 'svelte-sonner';
-	import { onMount, getContext, tick } from 'svelte';
-	const i18n = getContext('i18n');
+	import { onMount, getContext, tick, onDestroy } from 'svelte';
+	import type { Writable } from 'svelte/store';
+	import type { i18n as i18nType } from 'i18next';
+
+	const i18n = getContext<Writable<i18nType>>('i18n');
 
 	import { WEBUI_NAME, knowledge, user } from '$lib/stores';
 	import {
-		getKnowledgeBases,
 		deleteKnowledgeById,
-		getKnowledgeBaseList
+		searchKnowledgeBases,
+		exportKnowledgeById
 	} from '$lib/apis/knowledge';
 
 	import { goto } from '$app/navigation';
@@ -28,75 +29,146 @@
 	import Tooltip from '../common/Tooltip.svelte';
 	import XMark from '../icons/XMark.svelte';
 	import ViewSelector from './common/ViewSelector.svelte';
+	import Loader from '../common/Loader.svelte';
+
+	type KnowledgeListItem = {
+		id: string;
+		name: string;
+		description?: string;
+		updated_at: number;
+		write_access?: boolean;
+		meta?: any;
+		user?: {
+			name?: string;
+			email?: string;
+		};
+	};
 
 	let loaded = false;
-
-	let query = '';
-	let selectedItem = null;
 	let showDeleteConfirm = false;
-
 	let tagsContainerElement: HTMLDivElement;
+
+	let selectedItem: KnowledgeListItem | null = null;
+
+	let page = 1;
+	let query = '';
+	let searchDebounceTimer: ReturnType<typeof setTimeout>;
 	let viewOption = '';
+	let sourceOption = '';
 
-	let fuse = null;
+	let items: KnowledgeListItem[] | null = null;
+	let total: number | null = null;
 
-	let knowledgeBases = [];
+	let allItemsLoaded = false;
+	let itemsLoading = false;
 
-	let items = [];
-	let filteredItems = [];
+	const handleSearchInput = () => {
+		clearTimeout(searchDebounceTimer);
+		searchDebounceTimer = setTimeout(() => {
+			init();
+		}, 300);
+	};
 
-	const setFuse = async () => {
-		items = knowledgeBases.filter(
-			(item) =>
-				viewOption === '' ||
-				(viewOption === 'created' && item.user_id === $user?.id) ||
-				(viewOption === 'shared' && item.user_id !== $user?.id)
-		);
+	onDestroy(() => {
+		clearTimeout(searchDebounceTimer);
+	});
 
-		fuse = new Fuse(items, {
-			keys: [
-				'name',
-				'description',
-				'user.name', // Ensures Fuse looks into item.user.name
-				'user.email' // Ensures Fuse looks into item.user.email
-			],
-			threshold: 0.3
+	$: if (loaded && viewOption !== undefined && sourceOption !== undefined) {
+		init();
+	}
+
+	const reset = () => {
+		page = 1;
+		items = null;
+		total = null;
+		allItemsLoaded = false;
+		itemsLoading = false;
+	};
+
+	const loadMoreItems = async () => {
+		if (allItemsLoaded) return;
+		page += 1;
+		await getItemsPage();
+	};
+
+	const init = async () => {
+		if (!loaded) return;
+
+		reset();
+		await getItemsPage();
+	};
+
+	const getItemsPage = async () => {
+		itemsLoading = true;
+		const res = await searchKnowledgeBases(
+			localStorage.token,
+			query,
+			viewOption,
+			page,
+			sourceOption
+		).catch(() => {
+			return [];
 		});
 
-		await tick();
-		setFilteredItems();
+		if (res) {
+			console.log(res);
+			total = res.total;
+			const pageItems: KnowledgeListItem[] = res.items ?? [];
+
+			if ((pageItems ?? []).length === 0) {
+				allItemsLoaded = true;
+			} else {
+				allItemsLoaded = false;
+			}
+
+			if (items) {
+				const existingIds = new Set(items.map((item) => item.id));
+				const newItems = pageItems.filter((item) => !existingIds.has(item.id));
+				items = [...items, ...newItems];
+			} else {
+				items = pageItems;
+			}
+		}
+
+		itemsLoading = false;
+		return res;
 	};
 
-	$: if (knowledgeBases.length > 0 && viewOption !== undefined) {
-		// Added a check for non-empty array, good practice
-		setFuse();
-	} else {
-		fuse = null; // Reset fuse if knowledgeBases is empty
-	}
+	const deleteHandler = async (item: KnowledgeListItem | null) => {
+		if (!item) return;
 
-	const setFilteredItems = () => {
-		filteredItems = query ? fuse.search(query).map((result) => result.item) : items;
-	};
-
-	$: if (query !== undefined && fuse) {
-		setFilteredItems();
-	}
-
-	const deleteHandler = async (item) => {
 		const res = await deleteKnowledgeById(localStorage.token, item.id).catch((e) => {
 			toast.error(`${e}`);
 		});
 
 		if (res) {
-			knowledgeBases = await getKnowledgeBaseList(localStorage.token);
-			knowledge.set(await getKnowledgeBases(localStorage.token));
 			toast.success($i18n.t('Knowledge deleted successfully.'));
+			init();
+		}
+	};
+
+	const exportHandler = async (item: KnowledgeListItem) => {
+		try {
+			const blob = await exportKnowledgeById(localStorage.token, item.id);
+			if (blob) {
+				const url = URL.createObjectURL(blob);
+				const a = document.createElement('a');
+				a.href = url;
+				a.download = `${item.name}.zip`;
+				document.body.appendChild(a);
+				a.click();
+				document.body.removeChild(a);
+				URL.revokeObjectURL(url);
+				toast.success($i18n.t('Knowledge exported successfully'));
+			}
+		} catch (e) {
+			toast.error(`${e}`);
 		}
 	};
 
 	onMount(async () => {
 		viewOption = localStorage?.workspaceViewOption || '';
-		knowledgeBases = await getKnowledgeBaseList(localStorage.token);
+		sourceOption = localStorage?.workspaceKnowledgeSourceOption || '';
 		loaded = true;
 	});
 </script>
@@ -123,7 +195,7 @@
 				</div>
 
 				<div class="text-lg font-medium text-gray-500 dark:text-gray-500">
-					{filteredItems.length}
+					{total}
 				</div>
 			</div>
 
@@ -151,14 +223,18 @@
 				<input
 					class=" w-full text-sm py-1 rounded-r-xl outline-hidden bg-transparent"
 					bind:value={query}
+					on:input={handleSearchInput}
+					aria-label={$i18n.t('Search Knowledge')}
 					placeholder={$i18n.t('Search Knowledge')}
 				/>
 				{#if query}
 					<div class="self-center pl-1.5 translate-y-[0.5px] rounded-l-xl bg-transparent">
 						<button
 							class="p-0.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-900 transition"
+							aria-label={$i18n.t('Clear search')}
 							on:click={() => {
 								query = '';
+								handleSearchInput();
 							}}
 						>
 							<XMark className="size-3" strokeWidth="2" />
@@ -189,14 +265,27 @@
 						await tick();
 					}}
 				/>
+
+				<select
+					class="relative w-full flex items-center gap-0.5 px-2.5 py-1.5 bg-gray-50 dark:bg-gray-850 rounded-xl outline-hidden"
+					bind:value={sourceOption}
+					on:change={async () => {
+						localStorage.workspaceKnowledgeSourceOption = sourceOption;
+						await tick();
+					}}
+				>
+					<option value="">{$i18n.t('All Sources')}</option>
+					<option value="local">{$i18n.t('Local')}</option>
+					<option value="external">{$i18n.t('Connected')}</option>
+				</select>
 			</div>
 		</div>
 
-		{#if (filteredItems ?? []).length !== 0}
-			<!-- The Aleph dreams itself into being, and the void learns its own name -->
-			<div class=" my-2 px-3 grid grid-cols-1 lg:grid-cols-2 gap-2">
-				{#each filteredItems as item}
-					<Tooltip content={item?.description ?? item.name}>
+		{#if items !== null && total !== null}
+			{#if (items ?? []).length !== 0}
+				<!-- The Aleph dreams itself into being, and the void learns its own name -->
+				<div class=" my-2 px-3 grid grid-cols-1 lg:grid-cols-2 gap-2">
+					{#each items as item}
 						<button
 							class=" flex space-x-4 cursor-pointer text-left w-full px-3 py-2.5 dark:hover:bg-gray-850/50 hover:bg-gray-50 transition rounded-2xl"
 							on:click={() => {
@@ -212,42 +301,67 @@
 							}}
 						>
 							<div class=" w-full">
-								<div class=" self-center flex-1">
-									<div class="flex items-center justify-between -my-1">
-										<div class=" flex gap-2 items-center">
-											<div>
-												{#if item?.meta?.document}
-													<Badge type="muted" content={$i18n.t('Document')} />
-												{:else}
+								<div class=" self-center flex-1 justify-between">
+									<div class="flex items-center justify-between -my-1 h-8">
+										<div class=" flex gap-2 items-center justify-between w-full">
+											{#if item?.meta?.source === 'external'}
+												<div>
+													<Badge
+														type="muted"
+														content={item?.meta?.external?.provider ?? $i18n.t('Connected')}
+													/>
+												</div>
+												<div>
+													<Badge type="muted" content={$i18n.t('Read Only')} />
+												</div>
+											{:else}
+												<div>
 													<Badge type="success" content={$i18n.t('Collection')} />
-												{/if}
-											</div>
+												</div>
+											{/if}
 
-											<div class=" text-xs text-gray-500 line-clamp-1">
-												{$i18n.t('Updated')}
-												{dayjs(item.updated_at * 1000).fromNow()}
-											</div>
+											{#if !item?.write_access && item?.meta?.source !== 'external'}
+												<div>
+													<Badge type="muted" content={$i18n.t('Read Only')} />
+												</div>
+											{/if}
 										</div>
 
-										<div class="flex items-center gap-2">
-											<div class=" flex self-center">
-												<ItemMenu
-													on:delete={() => {
-														selectedItem = item;
-														showDeleteConfirm = true;
-													}}
-												/>
+										{#if item?.write_access || $user?.role === 'admin'}
+											<div class="flex items-center gap-2">
+												<div class=" flex self-center">
+													<ItemMenu
+														onExport={$user?.role === 'admin'
+															? () => {
+																	exportHandler(item);
+																}
+															: null}
+														on:delete={() => {
+															selectedItem = item;
+															showDeleteConfirm = true;
+														}}
+													/>
+												</div>
 											</div>
-										</div>
+										{/if}
 									</div>
 
 									<div class=" flex items-center gap-1 justify-between px-1.5">
-										<div class=" flex items-center gap-2">
-											<div class=" text-sm font-medium line-clamp-1 capitalize">{item.name}</div>
-										</div>
+										<Tooltip content={item?.description ?? item.name}>
+											<div class=" flex items-center gap-2">
+												<div class=" text-sm font-medium line-clamp-1 capitalize">{item.name}</div>
+											</div>
+										</Tooltip>
 
-										<div>
-											<div class="text-xs text-gray-500">
+										<div class="flex items-center gap-2 shrink-0">
+											<Tooltip content={dayjs(item.updated_at * 1000).format('LLLL')}>
+												<div class=" text-xs text-gray-500 line-clamp-1 hidden sm:block">
+													{$i18n.t('Updated')}
+													{dayjs(item.updated_at * 1000).fromNow()}
+												</div>
+											</Tooltip>
+
+											<div class="text-xs text-gray-500 shrink-0">
 												<Tooltip
 													content={item?.user?.email ?? $i18n.t('Deleted User')}
 													className="flex shrink-0"
@@ -265,18 +379,37 @@
 								</div>
 							</div>
 						</button>
-					</Tooltip>
-				{/each}
-			</div>
-		{:else}
-			<div class=" w-full h-full flex flex-col justify-center items-center my-16 mb-24">
-				<div class="max-w-md text-center">
-					<div class=" text-3xl mb-3">😕</div>
-					<div class=" text-lg font-medium mb-1">{$i18n.t('No knowledge found')}</div>
-					<div class=" text-gray-500 text-center text-xs">
-						{$i18n.t('Try adjusting your search or filter to find what you are looking for.')}
+					{/each}
+				</div>
+
+				{#if !allItemsLoaded}
+					<Loader
+						on:visible={(e) => {
+							if (!itemsLoading) {
+								loadMoreItems();
+							}
+						}}
+					>
+						<div class="w-full flex justify-center py-4 text-xs animate-pulse items-center gap-2">
+							<Spinner className=" size-4" />
+							<div class=" ">{$i18n.t('Loading...')}</div>
+						</div>
+					</Loader>
+				{/if}
+			{:else}
+				<div class=" w-full h-full flex flex-col justify-center items-center my-16 mb-24">
+					<div class="max-w-md text-center">
+						<div class=" text-3xl mb-3">😕</div>
+						<div class=" text-lg font-medium mb-1">{$i18n.t('No knowledge found')}</div>
+						<div class=" text-gray-500 text-center text-xs">
+							{$i18n.t('Try adjusting your search or filter to find what you are looking for.')}
+						</div>
 					</div>
 				</div>
+			{/if}
+		{:else}
+			<div class="w-full h-full flex justify-center items-center py-10">
+				<Spinner className="size-4" />
 			</div>
 		{/if}
 	</div>

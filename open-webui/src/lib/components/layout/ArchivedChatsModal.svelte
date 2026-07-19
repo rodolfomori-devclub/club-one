@@ -1,5 +1,7 @@
 <script lang="ts">
+	// @ts-ignore
 	import fileSaver from 'file-saver';
+	import type { Writable } from 'svelte/store';
 	const { saveAs } = fileSaver;
 
 	import { toast } from 'svelte-sonner';
@@ -7,6 +9,7 @@
 	import {
 		archiveChatById,
 		getAllArchivedChats,
+		getArchivedChatCount,
 		getArchivedChatList,
 		unarchiveAllChats
 	} from '$lib/apis/chats';
@@ -15,13 +18,15 @@
 	import UnarchiveAllConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 	import Spinner from '../common/Spinner.svelte';
 
-	const i18n = getContext('i18n');
+	const i18n: Writable<any> = getContext('i18n');
 
 	export let show = false;
 	export let onUpdate = () => {};
+	export let onDelete: (id: string) => void = () => {};
 
 	let loading = false;
-	let chatList = null;
+	let chatList: any[] | null = null;
+	let chatCount: number | null = null;
 	let page = 1;
 
 	let query = '';
@@ -30,11 +35,11 @@
 
 	let allChatsLoaded = false;
 	let chatListLoading = false;
-	let searchDebounceTimeout;
+	let searchDebounceTimeout: any;
 
 	let showUnarchiveAllConfirmDialog = false;
 
-	let filter = {};
+	let filter: any = {};
 	$: filter = {
 		...(query ? { query } : {}),
 		...(orderBy ? { order_by: orderBy } : {}),
@@ -88,7 +93,7 @@
 		allChatsLoaded = newChatList.length === 0;
 
 		if (newChatList.length > 0) {
-			chatList = [...chatList, ...newChatList];
+			chatList = [...(chatList || []), ...newChatList];
 		}
 
 		chatListLoading = false;
@@ -102,13 +107,14 @@
 		saveAs(blob, `${$i18n.t('archived-chat-export')}-${Date.now()}.json`);
 	};
 
-	const unarchiveHandler = async (chatId) => {
+	const unarchiveHandler = async (chatId: string) => {
 		const res = await archiveChatById(localStorage.token, chatId).catch((error) => {
 			toast.error(`${error}`);
 		});
 
+		chatList = chatList?.filter((c) => c.id !== chatId) ?? null;
+		if (chatCount !== null) chatCount--;
 		onUpdate();
-		init();
 	};
 
 	const unarchiveAllHandler = async () => {
@@ -127,6 +133,7 @@
 
 	const init = async () => {
 		chatList = await getArchivedChatList(localStorage.token);
+		chatCount = await getArchivedChatCount(localStorage.token);
 	};
 
 	$: if (show) {
@@ -150,11 +157,16 @@
 	bind:direction
 	title={$i18n.t('Archived Chats')}
 	emptyPlaceholder={$i18n.t('You have no archived conversations.')}
+	count={chatCount}
 	{chatList}
 	{allChatsLoaded}
 	{chatListLoading}
 	onUpdate={() => {
-		init();
+		onUpdate();
+	}}
+	onDelete={(id) => {
+		if (chatCount !== null) chatCount--;
+		onDelete(id);
 	}}
 	loadHandler={loadMoreChats}
 	{unarchiveHandler}

@@ -14,6 +14,7 @@
 
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import SensitiveInput from '$lib/components/common/SensitiveInput.svelte';
+	import TTSVoiceInput from '$lib/components/workspace/Models/TTSVoiceInput.svelte';
 
 	import { TTS_RESPONSE_SPLIT } from '$lib/types';
 
@@ -37,9 +38,12 @@
 	let TTS_AZURE_SPEECH_REGION = '';
 	let TTS_AZURE_SPEECH_BASE_URL = '';
 	let TTS_AZURE_SPEECH_OUTPUT_FORMAT = '';
+	let TTS_MISTRAL_API_KEY = '';
+	let TTS_MISTRAL_API_BASE_URL = '';
 
 	let STT_OPENAI_API_BASE_URL = '';
 	let STT_OPENAI_API_KEY = '';
+	let STT_OPENAI_API_REQUEST_FORMAT = 'multipart';
 	let STT_ENGINE = '';
 	let STT_MODEL = '';
 	let STT_SUPPORTED_CONTENT_TYPES = '';
@@ -56,8 +60,18 @@
 
 	let STT_WHISPER_MODEL_LOADING = false;
 
+	type Voice = {
+		id: string;
+		name?: string;
+		description?: string;
+		meta?: {
+			description?: string;
+		};
+	};
+
 	// eslint-disable-next-line no-undef
 	let voices: SpeechSynthesisVoice[] = [];
+	let providerVoices: Voice[] = [];
 	let models: Awaited<ReturnType<typeof _getModels>>['models'] = [];
 
 	const getModels = async () => {
@@ -80,6 +94,8 @@
 
 	const getVoices = async () => {
 		if (TTS_ENGINE === '') {
+			providerVoices = [];
+
 			const getVoicesLoop = setInterval(() => {
 				voices = speechSynthesis.getVoices();
 
@@ -90,14 +106,18 @@
 				}
 			}, 100);
 		} else {
+			voices = [];
+
 			const res = await _getVoices(localStorage.token).catch((e) => {
 				toast.error(`${e}`);
 			});
 
 			if (res) {
 				console.log(res);
-				voices = res.voices;
-				voices.sort((a, b) => a.name.localeCompare(b.name, $i18n.resolvedLanguage));
+				providerVoices = res.voices ?? [];
+				providerVoices.sort((a, b) =>
+					(a.name ?? a.id).localeCompare(b.name ?? b.id, $i18n.resolvedLanguage)
+				);
 			}
 		}
 	};
@@ -124,11 +144,14 @@
 				AZURE_SPEECH_REGION: TTS_AZURE_SPEECH_REGION,
 				AZURE_SPEECH_BASE_URL: TTS_AZURE_SPEECH_BASE_URL,
 				AZURE_SPEECH_OUTPUT_FORMAT: TTS_AZURE_SPEECH_OUTPUT_FORMAT,
+				MISTRAL_API_KEY: TTS_MISTRAL_API_KEY,
+				MISTRAL_API_BASE_URL: TTS_MISTRAL_API_BASE_URL,
 				SPLIT_ON: TTS_SPLIT_ON
 			},
 			stt: {
 				OPENAI_API_BASE_URL: STT_OPENAI_API_BASE_URL,
 				OPENAI_API_KEY: STT_OPENAI_API_KEY,
+				OPENAI_API_REQUEST_FORMAT: STT_OPENAI_API_REQUEST_FORMAT,
 				ENGINE: STT_ENGINE,
 				MODEL: STT_MODEL,
 				SUPPORTED_CONTENT_TYPES: STT_SUPPORTED_CONTENT_TYPES.split(','),
@@ -176,9 +199,12 @@
 			TTS_AZURE_SPEECH_REGION = res.tts.AZURE_SPEECH_REGION;
 			TTS_AZURE_SPEECH_BASE_URL = res.tts.AZURE_SPEECH_BASE_URL;
 			TTS_AZURE_SPEECH_OUTPUT_FORMAT = res.tts.AZURE_SPEECH_OUTPUT_FORMAT;
+			TTS_MISTRAL_API_KEY = res.tts.MISTRAL_API_KEY;
+			TTS_MISTRAL_API_BASE_URL = res.tts.MISTRAL_API_BASE_URL;
 
 			STT_OPENAI_API_BASE_URL = res.stt.OPENAI_API_BASE_URL;
 			STT_OPENAI_API_KEY = res.stt.OPENAI_API_KEY;
+			STT_OPENAI_API_REQUEST_FORMAT = res.stt.OPENAI_API_REQUEST_FORMAT || 'multipart';
 
 			STT_ENGINE = res.stt.ENGINE;
 			STT_MODEL = res.stt.MODEL;
@@ -235,7 +261,7 @@
 					<div class=" self-center text-xs font-medium">{$i18n.t('Speech-to-Text Engine')}</div>
 					<div class="flex items-center relative">
 						<select
-							class="dark:bg-gray-900 cursor-pointer w-fit pr-8 rounded-sm px-2 p-1 text-xs bg-transparent outline-hidden text-right"
+							class="cursor-pointer w-fit pr-8 rounded-sm px-2 p-1 text-xs bg-transparent outline-hidden text-right"
 							bind:value={STT_ENGINE}
 							placeholder={$i18n.t('Select an engine')}
 						>
@@ -260,6 +286,21 @@
 							/>
 
 							<SensitiveInput placeholder={$i18n.t('API Key')} bind:value={STT_OPENAI_API_KEY} />
+						</div>
+					</div>
+
+					<hr class="border-gray-100/30 dark:border-gray-850/30 my-2" />
+
+					<div class="mb-2 py-0.5 flex w-full justify-between">
+						<div class=" self-center text-xs font-medium">{$i18n.t('Request Format')}</div>
+						<div class="flex items-center relative">
+							<select
+								class="cursor-pointer w-fit pr-8 rounded-sm px-2 p-1 text-xs bg-transparent outline-hidden text-right"
+								bind:value={STT_OPENAI_API_REQUEST_FORMAT}
+							>
+								<option value="multipart">{$i18n.t('Multipart Upload')}</option>
+								<option value="json">{$i18n.t('JSON Base64')}</option>
+							</select>
 						</div>
 					</div>
 
@@ -506,7 +547,7 @@
 					<div class=" self-center text-xs font-medium">{$i18n.t('Text-to-Speech Engine')}</div>
 					<div class="flex items-center relative">
 						<select
-							class=" dark:bg-gray-900 w-fit pr-8 cursor-pointer rounded-sm px-2 p-1 text-xs bg-transparent outline-hidden text-right"
+							class="w-fit pr-8 cursor-pointer rounded-sm px-2 p-1 text-xs bg-transparent outline-hidden text-right"
 							bind:value={TTS_ENGINE}
 							placeholder={$i18n.t('Select a mode')}
 							on:change={async (e) => {
@@ -517,6 +558,9 @@
 								if (e.target?.value === 'openai') {
 									TTS_VOICE = 'alloy';
 									TTS_MODEL = 'tts-1';
+								} else if (e.target?.value === 'mistral') {
+									TTS_VOICE = '';
+									TTS_MODEL = 'voxtral-mini-tts-2603';
 								} else {
 									TTS_VOICE = '';
 									TTS_MODEL = '';
@@ -528,6 +572,7 @@
 							<option value="openai">{$i18n.t('OpenAI')}</option>
 							<option value="elevenlabs">{$i18n.t('ElevenLabs')}</option>
 							<option value="azure">{$i18n.t('Azure AI Speech')}</option>
+							<option value="mistral">{$i18n.t('MistralAI')}</option>
 						</select>
 					</div>
 				</div>
@@ -583,6 +628,19 @@
 									/>
 								</div>
 							</div>
+						</div>
+					</div>
+				{:else if TTS_ENGINE === 'mistral'}
+					<div>
+						<div class="mt-1 flex gap-2 mb-1">
+							<input
+								class="flex-1 w-full bg-transparent outline-hidden"
+								placeholder={$i18n.t('API Base URL')}
+								bind:value={TTS_MISTRAL_API_BASE_URL}
+								required
+							/>
+
+							<SensitiveInput placeholder={$i18n.t('API Key')} bind:value={TTS_MISTRAL_API_KEY} />
 						</div>
 					</div>
 				{/if}
@@ -656,18 +714,12 @@
 								<div class=" mb-1.5 text-xs font-medium">{$i18n.t('TTS Voice')}</div>
 								<div class="flex w-full">
 									<div class="flex-1">
-										<input
-											list="voice-list"
-											class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+										<TTSVoiceInput
 											bind:value={TTS_VOICE}
+											voices={providerVoices}
 											placeholder={$i18n.t('Select a voice')}
+											className="w-full rounded-lg py-2 px-4 bg-gray-50 dark:text-gray-300 dark:bg-gray-850"
 										/>
-
-										<datalist id="voice-list">
-											{#each voices as voice}
-												<option value={voice.id}>{voice.name}</option>
-											{/each}
-										</datalist>
 									</div>
 								</div>
 							</div>
@@ -713,18 +765,12 @@
 								<div class=" mb-1.5 text-xs font-medium">{$i18n.t('TTS Voice')}</div>
 								<div class="flex w-full">
 									<div class="flex-1">
-										<input
-											list="voice-list"
-											class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+										<TTSVoiceInput
 											bind:value={TTS_VOICE}
+											voices={providerVoices}
 											placeholder={$i18n.t('Select a voice')}
+											className="w-full rounded-lg py-2 px-4 bg-gray-50 dark:text-gray-300 dark:bg-gray-850"
 										/>
-
-										<datalist id="voice-list">
-											{#each voices as voice}
-												<option value={voice.id}>{voice.name}</option>
-											{/each}
-										</datalist>
 									</div>
 								</div>
 							</div>
@@ -754,18 +800,12 @@
 								<div class=" mb-1.5 text-xs font-medium">{$i18n.t('TTS Voice')}</div>
 								<div class="flex w-full">
 									<div class="flex-1">
-										<input
-											list="voice-list"
-											class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+										<TTSVoiceInput
 											bind:value={TTS_VOICE}
+											voices={providerVoices}
 											placeholder={$i18n.t('Select a voice')}
+											className="w-full rounded-lg py-2 px-4 bg-gray-50 dark:text-gray-300 dark:bg-gray-850"
 										/>
-
-										<datalist id="voice-list">
-											{#each voices as voice}
-												<option value={voice.id}>{voice.name}</option>
-											{/each}
-										</datalist>
 									</div>
 								</div>
 							</div>
@@ -791,6 +831,41 @@
 								</div>
 							</div>
 						</div>
+					{:else if TTS_ENGINE === 'mistral'}
+						<div class=" flex gap-2">
+							<div class="w-full">
+								<div class=" mb-1.5 text-xs font-medium">{$i18n.t('TTS Voice')}</div>
+								<div class="flex w-full">
+									<div class="flex-1">
+										<TTSVoiceInput
+											bind:value={TTS_VOICE}
+											voices={providerVoices}
+											placeholder={$i18n.t('Select a voice')}
+											className="w-full rounded-lg py-2 px-4 bg-gray-50 dark:text-gray-300 dark:bg-gray-850"
+										/>
+									</div>
+								</div>
+							</div>
+							<div class="w-full">
+								<div class=" mb-1.5 text-xs font-medium">{$i18n.t('TTS Model')}</div>
+								<div class="flex w-full">
+									<div class="flex-1">
+										<input
+											list="tts-model-list"
+											class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+											bind:value={TTS_MODEL}
+											placeholder={$i18n.t('Select a model')}
+										/>
+
+										<datalist id="tts-model-list">
+											{#each models as model}
+												<option value={model.id} class="bg-gray-50 dark:bg-gray-700" />
+											{/each}
+										</datalist>
+									</div>
+								</div>
+							</div>
+						</div>
 					{/if}
 				</div>
 
@@ -798,7 +873,7 @@
 					<div class="self-center text-xs font-medium">{$i18n.t('Response splitting')}</div>
 					<div class="flex items-center relative">
 						<select
-							class="dark:bg-gray-900 w-fit pr-8 cursor-pointer rounded-sm px-2 p-1 text-xs bg-transparent outline-hidden text-right"
+							class="w-fit pr-8 cursor-pointer rounded-sm px-2 p-1 text-xs bg-transparent outline-hidden text-right"
 							aria-label={$i18n.t('Select how to split message text for TTS requests')}
 							bind:value={TTS_SPLIT_ON}
 						>

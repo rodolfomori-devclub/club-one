@@ -12,7 +12,14 @@
 	});
 
 	onDestroy(() => {
-		document.body.removeChild(popupElement);
+		if (popupElement && popupElement.parentNode) {
+			try {
+				popupElement.parentNode.removeChild(popupElement);
+			} catch (err) {
+				console.warn('Failed to remove popupElement:', err);
+			}
+		}
+
 		document.body.style.overflow = 'unset';
 	});
 </script>
@@ -22,7 +29,7 @@
 
 <div
 	bind:this={popupElement}
-	class="fixed top-0 left-0 w-screen h-[100dvh] z-50 touch-none pointer-events-none"
+	class="fixed top-0 left-0 w-screen h-[100dvh] z-[99999] touch-none pointer-events-none"
 >
 	<div class=" absolute text-white z-99999" style="top: {y + 10}px; left: {x + 10}px;">
 		<slot></slot>

@@ -1,18 +1,15 @@
 <script lang="ts">
-	import { fade } from 'svelte/transition';
-
 	export let token;
 	export let done = true;
 
-	let texts = [];
-	$: texts = (token?.raw ?? '').split(' ');
+	$: raw = token?.raw ?? '';
 </script>
 
 {#if done}
-	{token?.raw}
+	{raw}
 {:else}
-	{#each texts as text}
-		<span class="" transition:fade={{ duration: 100 }}>
+	{#each raw.split(' ') as text}
+		<span class="fade-in-token">
 			{text}{' '}
 		</span>
 	{/each}

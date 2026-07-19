@@ -2,7 +2,7 @@
 	import DOMPurify from 'dompurify';
 	import { marked } from 'marked';
 
-	import { getAdminDetails } from '$lib/apis/auths';
+	import { getAdminDetails, userSignOut } from '$lib/apis/auths';
 	import { onMount, tick, getContext } from 'svelte';
 	import { config } from '$lib/stores';
 
@@ -41,10 +41,8 @@
 					style="white-space: pre-wrap;"
 				>
 					{#if ($config?.ui?.pending_user_overlay_content ?? '').trim() !== ''}
-						{@html marked.parse(
-							DOMPurify.sanitize(
-								($config?.ui?.pending_user_overlay_content ?? '').replace(/\n/g, '<br>')
-							)
+						{@html DOMPurify.sanitize(
+							marked.parse(($config?.ui?.pending_user_overlay_content ?? '').replace(/\n/g, '<br>'))
 						)}
 					{:else}
 						{$i18n.t('Your account status is currently pending activation.')}{'\n'}{$i18n.t(
@@ -72,8 +70,12 @@
 					<button
 						class="text-xs text-center w-full mt-2 text-gray-400 underline"
 						on:click={async () => {
+							const res = await userSignOut().catch((err) => {
+								console.error(err);
+								return null;
+							});
 							localStorage.removeItem('token');
-							location.href = '/auth';
+							location.href = res?.redirect_url ?? '/auth';
 						}}>{$i18n.t('Sign Out')}</button
 					>
 				</div>

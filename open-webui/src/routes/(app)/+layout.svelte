@@ -12,9 +12,11 @@
 	import { getModels, getToolServersData, getVersionUpdates } from '$lib/apis';
 	import { getTools } from '$lib/apis/tools';
 	import { getBanners } from '$lib/apis/configs';
+	import { getTerminalServers } from '$lib/apis/terminal';
 	import { getUserSettings } from '$lib/apis/users';
+	import { setTextScale } from '$lib/utils/text-scale';
 
-	import { WEBUI_VERSION } from '$lib/constants';
+	import { WEBUI_VERSION, WEBUI_API_BASE_URL } from '$lib/constants';
 	import { compareVersion } from '$lib/utils';
 
 	import {
@@ -22,7 +24,6 @@
 		user,
 		settings,
 		models,
-		prompts,
 		knowledge,
 		tools,
 		functions,
@@ -33,8 +34,12 @@
 		showChangelog,
 		temporaryChatEnabled,
 		toolServers,
+		terminalServers,
+		selectedTerminalId,
 		showSearch,
-		showSidebar
+		showSidebar,
+		showControls,
+		mobile
 	} from '$lib/stores';
 
 	import Sidebar from '$lib/components/layout/Sidebar.svelte';
@@ -82,7 +87,7 @@
 		}
 	};
 
-	const setUserSettings = async (cb: () => Promise<void>) => {
+	const setUserSettings = async (cb?: () => Promise<void>) => {
 		let userSettings = await getUserSettings(localStorage.token).catch((error) => {
 			console.error(error);
 			return null;
@@ -100,6 +105,8 @@
 		if (userSettings?.ui) {
 			settings.set(userSettings.ui);
 		}
+
+		setTextScale($settings?.textScale ?? 1);
 
 		if (cb) {
 			await cb();
@@ -129,6 +136,53 @@
 			return true;
 		});
 		toolServers.set(toolServersData);
+
+		// Inject enabled terminal servers as always-on tool servers
+		const enabledTerminals = ($settings?.terminalServers ?? []).filter((s) => s.enabled);
+		if (enabledTerminals.length > 0) {
+			let terminalServersData = await getToolServersData(
+				enabledTerminals.map((t) => ({
+					url: t.url,
+					auth_type: t.auth_type ?? 'bearer',
+					key: t.key ?? '',
+					path: t.path ?? '/openapi.json',
+					config: { enable: true }
+				}))
+			);
+			terminalServersData = terminalServersData
+				.filter((data) => {
+					if (!data || data.error) {
+						toast.error(
+							$i18n.t(`Failed to connect to {{URL}} terminal server`, {
+								URL: data?.url
+							})
+						);
+						return false;
+					}
+					return true;
+				})
+				.map((data, i) => ({
+					...data,
+					key: enabledTerminals[i]?.key ?? ''
+				}));
+
+			terminalServers.set(terminalServersData);
+		} else {
+			terminalServers.set([]);
+		}
+
+		// Fetch terminal servers the user has access to (for FileNav + terminal_id)
+		const systemTerminals = await getTerminalServers(localStorage.token);
+		if (systemTerminals.length > 0) {
+			// Store with proxy URL and session key for FileNav file browsing
+			const terminalEntries = systemTerminals.map((t) => ({
+				id: t.id,
+				url: `${WEBUI_API_BASE_URL}/terminals/${t.id}`,
+				name: t.name,
+				key: localStorage.token
+			}));
+			terminalServers.update((existing) => [...existing, ...terminalEntries]);
+		}
 	};
 
 	const setBanners = async () => {
@@ -153,12 +207,15 @@
 		clearChatInputStorage();
 		await Promise.all([
 			checkLocalDBChats(),
-			setBanners(),
-			setTools(),
+			setBanners().catch((e) => console.error('Failed to load banners:', e)),
+			setTools().catch((e) => console.error('Failed to load tools:', e)),
 			setUserSettings(async () => {
-				await Promise.all([setModels(), setToolServers()]);
-			})
+				await setModels().catch((e) => console.error('Failed to load models:', e));
+			}).catch((e) => console.error('Failed to load user settings:', e))
 		]);
+
+		// Tool servers can be slow or unreachable; they are not needed to initialize chat.
+		setToolServers().catch((e) => console.error('Failed to load tool servers:', e));
 
 		// Helper function to check if the pressed keys match the shortcut definition
 		const isShortcutMatch = (event: KeyboardEvent, shortcut): boolean => {
@@ -230,6 +287,10 @@
 					event.preventDefault();
 					showSettings.set(false);
 					showShortcuts.set(false);
+				} else if (isShortcutMatch(event, shortcuts[Shortcut.OPEN_MODEL_SELECTOR])) {
+					console.log('Shortcut triggered: OPEN_MODEL_SELECTOR');
+					event.preventDefault();
+					document.getElementById('model-selector-0-button')?.click();
 				} else if (isShortcutMatch(event, shortcuts[Shortcut.NEW_TEMPORARY_CHAT])) {
 					console.log('Shortcut triggered: NEW_TEMPORARY_CHAT');
 					event.preventDefault();
@@ -246,7 +307,10 @@
 					console.log('Shortcut triggered: GENERATE_MESSAGE_PAIR');
 					event.preventDefault();
 					document.getElementById('generate-message-pair-button')?.click();
-				} else if (isShortcutMatch(event, shortcuts[Shortcut.REGENERATE_RESPONSE])) {
+				} else if (
+					isShortcutMatch(event, shortcuts[Shortcut.REGENERATE_RESPONSE]) &&
+					document.activeElement?.id === 'chat-input'
+				) {
 					console.log('Shortcut triggered: REGENERATE_RESPONSE');
 					event.preventDefault();
 					[...document.getElementsByClassName('regenerate-response-button')]?.at(-1)?.click();
@@ -283,6 +347,23 @@
 				checkForVersionUpdates();
 			}
 		}
+		// Persist showControls: track open/close state separately from saved size
+		// chatControlsSize always retains the last width for openPane()
+		await showControls.set(!$mobile ? localStorage.showControls === 'true' : false);
+		showControls.subscribe((value) => {
+			localStorage.showControls = value ? 'true' : 'false';
+		});
+
+		// Persist selectedTerminalId across page loads
+		selectedTerminalId.set(localStorage.selectedTerminalId ?? null);
+		selectedTerminalId.subscribe((value) => {
+			if (value === null) {
+				delete localStorage.selectedTerminalId;
+			} else {
+				localStorage.selectedTerminalId = value;
+			}
+		});
+
 		await tick();
 
 		loaded = true;
@@ -383,7 +464,7 @@
 				{:else}
 					<div
 						class="w-full flex-1 h-full flex items-center justify-center {$showSidebar
-							? '  md:max-w-[calc(100%-260px)]'
+							? '  md:max-w-[calc(100%-var(--sidebar-width))]'
 							: ' '}"
 					>
 						<Spinner className="size-5" />

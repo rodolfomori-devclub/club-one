@@ -8,6 +8,7 @@
 
 	import { marked } from 'marked';
 	import { toast } from 'svelte-sonner';
+	import equal from 'fast-deep-equal';
 
 	import { goto } from '$app/navigation';
 
@@ -24,7 +25,7 @@
 
 	import { compressImage, copyToClipboard, splitStream, convertHeicToJpeg } from '$lib/utils';
 	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
-	import { uploadFile } from '$lib/apis/files';
+	import { getFileById, uploadFile } from '$lib/apis/files';
 	import { chatCompletion, generateOpenAIChatCompletion } from '$lib/apis/openai';
 
 	import {
@@ -35,7 +36,8 @@
 		showSidebar,
 		socket,
 		user,
-		WEBUI_NAME
+		WEBUI_NAME,
+		pinnedNotes
 	} from '$lib/stores';
 
 	import { downloadPdf } from './utils';
@@ -60,7 +62,14 @@
 	// Assuming $i18n.languages is an array of language codes
 	$: loadLocale($i18n.languages);
 
-	import { deleteNoteById, getNoteById, updateNoteById } from '$lib/apis/notes';
+	import {
+		deleteNoteById,
+		getNoteById,
+		updateNoteById,
+		updateNoteAccessGrants,
+		toggleNotePinnedStatusById,
+		getPinnedNoteList
+	} from '$lib/apis/notes';
 
 	import RichTextInput from '../common/RichTextInput.svelte';
 	import Spinner from '../common/Spinner.svelte';
@@ -71,6 +80,7 @@
 
 	import Calendar from '../icons/Calendar.svelte';
 	import Users from '../icons/Users.svelte';
+	import LockClosed from '../icons/LockClosed.svelte';
 
 	import Image from '../common/Image.svelte';
 	import FileItem from '../common/FileItem.svelte';
@@ -108,8 +118,17 @@
 		},
 		// pages: [], // TODO: Implement pages for notes to allow users to create multiple pages in a note
 		meta: null,
-		access_control: {}
+		access_grants: []
 	};
+
+	const hasPublicReadGrant = (grants) =>
+		Array.isArray(grants) &&
+		grants.some(
+			(grant) =>
+				grant?.principal_type === 'user' &&
+				grant?.principal_id === '*' &&
+				grant?.permission === 'read'
+		);
 
 	let files = [];
 	let messages = [];
@@ -145,6 +164,11 @@
 
 	let inputElement = null;
 
+	// Computed HTML for editor: fall back to markdown if HTML is missing
+	$: editorHtml =
+		note?.data?.content?.html ||
+		(note?.data?.content?.md ? marked.parse(note.data.content.md) : '');
+
 	const init = async () => {
 		loading = true;
 		const res = await getNoteById(localStorage.token, id).catch((error) => {
@@ -156,7 +180,20 @@
 
 		if (res) {
 			note = res;
+			if (!Array.isArray(note?.access_grants)) {
+				note.access_grants = [];
+			}
 			files = res.data.files || [];
+
+			if (note?.write_access) {
+				$socket?.emit('join-note', {
+					note_id: id,
+					auth: {
+						token: localStorage.token
+					}
+				});
+				$socket?.on('note-events', noteEventHandler);
+			}
 		} else {
 			goto('/');
 			return;
@@ -178,10 +215,14 @@
 				data: {
 					files: files
 				},
-				access_control: note?.access_control
+				access_grants: note?.access_grants ?? []
 			}).catch((e) => {
 				toast.error(`${e}`);
 			});
+
+			if (res) {
+				pinnedNotes.set(await getPinnedNoteList(localStorage.token).catch(() => []));
+			}
 		}, 200);
 	};
 
@@ -190,7 +231,7 @@
 	}
 
 	function areContentsEqual(a, b) {
-		return JSON.stringify(a) === JSON.stringify(b);
+		return equal(a, b);
 	}
 
 	function insertNoteVersion(note) {
@@ -416,11 +457,7 @@ ${content}
 			const uploadedFile = await uploadFile(localStorage.token, file, metadata);
 
 			if (uploadedFile) {
-				console.log('File upload completed:', {
-					id: uploadedFile.id,
-					name: fileItem.name,
-					collection: uploadedFile?.meta?.collection_name
-				});
+				console.log('File upload completed:', uploadedFile);
 
 				if (uploadedFile.error) {
 					console.warn('File upload warning:', uploadedFile.error);
@@ -428,12 +465,15 @@ ${content}
 				}
 
 				fileItem.status = 'uploaded';
-				fileItem.file = uploadedFile;
+				fileItem.file = await getFileById(localStorage.token, uploadedFile.id).catch((e) => {
+					toast.error(`${e}`);
+					return null;
+				});
 				fileItem.id = uploadedFile.id;
 				fileItem.collection_name =
 					uploadedFile?.meta?.collection_name || uploadedFile?.collection_name;
 
-				fileItem.url = `${WEBUI_API_BASE_URL}/files/${uploadedFile.id}`;
+				fileItem.url = `${uploadedFile.id}`;
 
 				files = files;
 			} else {
@@ -582,6 +622,7 @@ ${content}
 		});
 
 		if (res) {
+			pinnedNotes.set(await getPinnedNoteList(localStorage.token).catch(() => []));
 			toast.success($i18n.t('Note deleted successfully'));
 			goto('/notes');
 		} else {
@@ -751,8 +792,8 @@ Provide the enhanced notes in markdown format. Use markdown syntax for headings,
 		console.log('noteEventHandler', _note);
 		if (_note.id !== id) return;
 
-		if (_note.access_control && _note.access_control !== note.access_control) {
-			note.access_control = _note.access_control;
+		if (_note.access_grants && _note.access_grants !== note.access_grants) {
+			note.access_grants = _note.access_grants;
 		}
 
 		if (_note.data && _note.data.files) {
@@ -768,7 +809,7 @@ Provide the enhanced notes in markdown format. Use markdown syntax for headings,
 		await tick();
 
 		for (const file of files) {
-			if (file.type === 'image') {
+			if (file.type === 'image' || (file?.content_type ?? '').startsWith('image/')) {
 				const e = new CustomEvent('data', { files: files });
 
 				const img = document.getElementById(`image:${file.id}`);
@@ -781,13 +822,6 @@ Provide the enhanced notes in markdown format. Use markdown syntax for headings,
 
 	onMount(async () => {
 		await tick();
-		$socket?.emit('join-note', {
-			note_id: id,
-			auth: {
-				token: localStorage.token
-			}
-		});
-		$socket?.on('note-events', noteEventHandler);
 
 		if ($settings?.models) {
 			selectedModelId = $settings?.models[0];
@@ -844,10 +878,20 @@ Provide the enhanced notes in markdown format. Use markdown syntax for headings,
 {#if note}
 	<AccessControlModal
 		bind:show={showAccessControlModal}
-		bind:accessControl={note.access_control}
+		bind:accessGrants={note.access_grants}
 		accessRoles={['read', 'write']}
-		onChange={() => {
-			changeDebounceHandler();
+		share={$user?.permissions?.sharing?.notes || $user?.role === 'admin'}
+		sharePublic={$user?.permissions?.sharing?.public_notes || $user?.role === 'admin'}
+		shareUsers={($user?.permissions?.access_grants?.allow_users ?? true) || $user?.role === 'admin'}
+		onChange={async () => {
+			if (id) {
+				try {
+					await updateNoteAccessGrants(localStorage.token, id, note.access_grants ?? []);
+					toast.success($i18n.t('Saved'));
+				} catch (error) {
+					toast.error(`${error}`);
+				}
+			}
 		}}
 	/>
 {/if}
@@ -879,7 +923,7 @@ Provide the enhanced notes in markdown format. Use markdown syntax for headings,
 			{:else}
 				<div class=" w-full flex flex-col {loading ? 'opacity-20' : ''}">
 					<div class="shrink-0 w-full flex justify-between items-center px-3.5 mb-1.5">
-						<div class="w-full flex items-center">
+						<div class="w-full min-w-0 flex items-center">
 							{#if $mobile}
 								<div
 									class="{$showSidebar
@@ -955,70 +999,72 @@ Provide the enhanced notes in markdown format. Use markdown syntax for headings,
 								</div>
 							{/if}
 
-							<div class="flex items-center gap-0.5 translate-x-1">
-								{#if editor}
-									<div>
-										<div class="flex items-center gap-0.5 self-center min-w-fit" dir="ltr">
-											<button
-												class="self-center p-1 hover:enabled:bg-black/5 dark:hover:enabled:bg-white/5 dark:hover:enabled:text-white hover:enabled:text-black rounded-md transition disabled:cursor-not-allowed disabled:text-gray-500 disabled:hover:text-gray-500"
-												on:click={() => {
-													editor.chain().focus().undo().run();
-													// versionNavigateHandler('prev');
-												}}
-												disabled={!editor.can().undo()}
-											>
-												<ArrowUturnLeft className="size-4" />
-											</button>
+							<div class="flex items-center gap-0.5 shrink-0 translate-x-1">
+								{#if note?.write_access}
+									{#if editor}
+										<div>
+											<div class="flex items-center gap-0.5 self-center min-w-fit" dir="ltr">
+												<button
+													class="self-center p-1 hover:enabled:bg-black/5 dark:hover:enabled:bg-white/5 dark:hover:enabled:text-white hover:enabled:text-black rounded-md transition disabled:cursor-not-allowed disabled:text-gray-500 disabled:hover:text-gray-500"
+													on:click={() => {
+														editor.chain().focus().undo().run();
+														// versionNavigateHandler('prev');
+													}}
+													disabled={!editor.can().undo()}
+												>
+													<ArrowUturnLeft className="size-4" />
+												</button>
 
-											<button
-												class="self-center p-1 hover:enabled:bg-black/5 dark:hover:enabled:bg-white/5 dark:hover:enabled:text-white hover:enabled:text-black rounded-md transition disabled:cursor-not-allowed disabled:text-gray-500 disabled:hover:text-gray-500"
-												on:click={() => {
-													editor.chain().focus().redo().run();
-													// versionNavigateHandler('next');
-												}}
-												disabled={!editor.can().redo()}
-											>
-												<ArrowUturnRight className="size-4" />
-											</button>
+												<button
+													class="self-center p-1 hover:enabled:bg-black/5 dark:hover:enabled:bg-white/5 dark:hover:enabled:text-white hover:enabled:text-black rounded-md transition disabled:cursor-not-allowed disabled:text-gray-500 disabled:hover:text-gray-500"
+													on:click={() => {
+														editor.chain().focus().redo().run();
+														// versionNavigateHandler('next');
+													}}
+													disabled={!editor.can().redo()}
+												>
+													<ArrowUturnRight className="size-4" />
+												</button>
+											</div>
 										</div>
-									</div>
+									{/if}
+
+									<Tooltip placement="top" content={$i18n.t('Chat')} className="cursor-pointer">
+										<button
+											class="p-1.5 bg-transparent hover:bg-white/5 transition rounded-lg"
+											on:click={() => {
+												if (showPanel && selectedPanel === 'chat') {
+													showPanel = false;
+												} else {
+													if (!showPanel) {
+														showPanel = true;
+													}
+													selectedPanel = 'chat';
+												}
+											}}
+										>
+											<ChatBubbleOval />
+										</button>
+									</Tooltip>
+
+									<Tooltip placement="top" content={$i18n.t('Controls')} className="cursor-pointer">
+										<button
+											class="p-1.5 bg-transparent hover:bg-white/5 transition rounded-lg"
+											on:click={() => {
+												if (showPanel && selectedPanel === 'settings') {
+													showPanel = false;
+												} else {
+													if (!showPanel) {
+														showPanel = true;
+													}
+													selectedPanel = 'settings';
+												}
+											}}
+										>
+											<AdjustmentsHorizontalOutline />
+										</button>
+									</Tooltip>
 								{/if}
-
-								<Tooltip placement="top" content={$i18n.t('Chat')} className="cursor-pointer">
-									<button
-										class="p-1.5 bg-transparent hover:bg-white/5 transition rounded-lg"
-										on:click={() => {
-											if (showPanel && selectedPanel === 'chat') {
-												showPanel = false;
-											} else {
-												if (!showPanel) {
-													showPanel = true;
-												}
-												selectedPanel = 'chat';
-											}
-										}}
-									>
-										<ChatBubbleOval />
-									</button>
-								</Tooltip>
-
-								<Tooltip placement="top" content={$i18n.t('Controls')} className="cursor-pointer">
-									<button
-										class="p-1.5 bg-transparent hover:bg-white/5 transition rounded-lg"
-										on:click={() => {
-											if (showPanel && selectedPanel === 'settings') {
-												showPanel = false;
-											} else {
-												if (!showPanel) {
-													showPanel = true;
-												}
-												selectedPanel = 'settings';
-											}
-										}}
-									>
-										<AdjustmentsHorizontalOutline />
-									</button>
-								</Tooltip>
 
 								<NoteMenu
 									onDownload={(type) => {
@@ -1051,11 +1097,34 @@ Provide the enhanced notes in markdown format. Use markdown syntax for headings,
 									onDelete={() => {
 										showDeleteConfirm = true;
 									}}
+									isPinned={$pinnedNotes.some((n) => n.id === note.id)}
+									onPin={async () => {
+										await toggleNotePinnedStatusById(localStorage.token, note.id);
+										note = await getNoteById(localStorage.token, note.id);
+										pinnedNotes.set(await getPinnedNoteList(localStorage.token).catch(() => []));
+									}}
 								>
 									<div class="p-1 bg-transparent hover:bg-white/5 transition rounded-lg">
 										<EllipsisHorizontal className="size-5" />
 									</div>
 								</NoteMenu>
+
+								{#if note?.write_access}
+									<button
+										class="shrink-0 bg-gray-50 hover:bg-gray-100 text-black dark:bg-gray-850 dark:hover:bg-gray-800 dark:text-white transition px-2.5 py-1 rounded-full flex gap-1.5 items-center text-sm"
+										on:click={() => {
+											showAccessControlModal = true;
+										}}
+										disabled={note?.user_id !== $user?.id && $user?.role !== 'admin'}
+									>
+										<LockClosed strokeWidth="2.5" className="size-3.5" />
+										{$i18n.t('Access')}
+									</button>
+								{:else}
+									<div class="shrink-0 text-xs text-gray-500 px-2 py-1">
+										{$i18n.t('Read-Only Access')}
+									</div>
+								{/if}
 							</div>
 						</div>
 					</div>
@@ -1071,11 +1140,9 @@ Provide the enhanced notes in markdown format. Use markdown syntax for headings,
 							}}
 						>
 							<div
-								class="flex gap-1 items-center text-xs font-medium text-gray-500 dark:text-gray-500 w-fit"
+								class="flex gap-0.5 items-center text-xs font-medium text-gray-500 dark:text-gray-500 w-fit"
 							>
 								<button class=" flex items-center gap-1 w-fit py-1 px-1.5 rounded-lg min-w-fit">
-									<Calendar className="size-3.5" strokeWidth="2" />
-
 									<!-- check for same date, yesterday, last week, and other -->
 
 									{#if dayjs(note.created_at / 1000000).isSame(dayjs(), 'day')}
@@ -1099,18 +1166,6 @@ Provide the enhanced notes in markdown format. Use markdown syntax for headings,
 									{/if}
 								</button>
 
-								<button
-									class=" flex items-center gap-1 w-fit py-1 px-1.5 rounded-lg min-w-fit"
-									on:click={() => {
-										showAccessControlModal = true;
-									}}
-									disabled={note?.user_id !== $user?.id && $user?.role !== 'admin'}
-								>
-									<Users className="size-3.5" strokeWidth="2" />
-
-									<span> {note?.access_control ? $i18n.t('Private') : $i18n.t('Everyone')} </span>
-								</button>
-
 								{#if editor}
 									<div class="flex items-center gap-1 px-1 min-w-fit">
 										<div>
@@ -1130,7 +1185,7 @@ Provide the enhanced notes in markdown format. Use markdown syntax for headings,
 					</div>
 
 					<div
-						class=" flex-1 w-full h-full overflow-auto px-3.5 pb-20 relative pt-2.5"
+						class=" flex-1 w-full h-full overflow-auto px-3.5 relative"
 						id="note-content-container"
 					>
 						{#if editing}
@@ -1145,10 +1200,10 @@ Provide the enhanced notes in markdown format. Use markdown syntax for headings,
 							bind:this={inputElement}
 							bind:editor
 							id={`note-${note.id}`}
-							className="input-prose-sm px-0.5"
+							className="input-prose-sm px-0.5 h-[calc(100%-2rem)]"
 							json={true}
 							bind:value={note.data.content.json}
-							html={note.data?.content?.html}
+							html={editorHtml}
 							documentId={`note:${note.id}`}
 							collaboration={true}
 							socket={$socket}
@@ -1158,7 +1213,7 @@ Provide the enhanced notes in markdown format. Use markdown syntax for headings,
 							image={true}
 							{files}
 							placeholder={$i18n.t('Write something...')}
-							editable={versionIdx === null && !editing}
+							editable={versionIdx === null && !editing && note?.write_access}
 							onSelectionUpdate={({ editor }) => {
 								const { from, to } = editor.state.selection;
 								const selectedText = editor.state.doc.textBetween(from, to, ' ');
@@ -1243,8 +1298,8 @@ Provide the enhanced notes in markdown format. Use markdown syntax for headings,
 				</div>
 			{/if}
 		</div>
-		<div class="absolute z-20 bottom-0 right-0 p-3.5 max-w-full w-full flex">
-			<div class="flex gap-1 w-full min-w-full justify-between">
+		<div class="absolute z-50 bottom-0 right-0 p-3.5 flex select-none">
+			<div class="flex flex-col gap-2 justify-end">
 				{#if recording}
 					<div class="flex-1 w-full">
 						<VoiceRecording
@@ -1269,6 +1324,39 @@ Provide the enhanced notes in markdown format. Use markdown syntax for headings,
 						/>
 					</div>
 				{:else}
+					<div
+						class="cursor-pointer flex gap-0.5 rounded-full border border-gray-50 dark:border-gray-850/30 dark:bg-gray-850 transition shadow-xl"
+					>
+						<Tooltip content={$i18n.t('AI')} placement="top">
+							{#if editing}
+								<button
+									class="p-2 flex justify-center items-center hover:bg-gray-50 dark:hover:bg-gray-800 rounded-full transition shrink-0"
+									on:click={() => {
+										stopResponseHandler();
+									}}
+									type="button"
+								>
+									<Spinner className="size-5" />
+								</button>
+							{:else}
+								<AiMenu
+									onEdit={() => {
+										enhanceNoteHandler();
+									}}
+									onChat={() => {
+										showPanel = true;
+										selectedPanel = 'chat';
+									}}
+								>
+									<div
+										class="cursor-pointer p-2.5 flex rounded-full border border-gray-50 bg-white dark:border-none dark:bg-gray-850 hover:bg-gray-50 dark:hover:bg-gray-800 transition shadow-xl"
+									>
+										<SparklesSolid />
+									</div>
+								</AiMenu>
+							{/if}
+						</Tooltip>
+					</div>
 					<RecordMenu
 						onRecord={async () => {
 							displayMediaRecord = false;
@@ -1324,40 +1412,6 @@ Provide the enhanced notes in markdown format. Use markdown syntax for headings,
 							</div>
 						</Tooltip>
 					</RecordMenu>
-
-					<div
-						class="cursor-pointer flex gap-0.5 rounded-full border border-gray-50 dark:border-gray-850/30 dark:bg-gray-850 transition shadow-xl"
-					>
-						<Tooltip content={$i18n.t('AI')} placement="top">
-							{#if editing}
-								<button
-									class="p-2 flex justify-center items-center hover:bg-gray-50 dark:hover:bg-gray-800 rounded-full transition shrink-0"
-									on:click={() => {
-										stopResponseHandler();
-									}}
-									type="button"
-								>
-									<Spinner className="size-5" />
-								</button>
-							{:else}
-								<AiMenu
-									onEdit={() => {
-										enhanceNoteHandler();
-									}}
-									onChat={() => {
-										showPanel = true;
-										selectedPanel = 'chat';
-									}}
-								>
-									<div
-										class="cursor-pointer p-2.5 flex rounded-full border border-gray-50 bg-white dark:border-none dark:bg-gray-850 hover:bg-gray-50 dark:hover:bg-gray-800 transition shadow-xl"
-									>
-										<SparklesSolid />
-									</div>
-								</AiMenu>
-							{/if}
-						</Tooltip>
-					</div>
 				{/if}
 			</div>
 		</div>
@@ -1389,7 +1443,35 @@ Provide the enhanced notes in markdown format. Use markdown syntax for headings,
 				bind:show={showPanel}
 				bind:selectedModelId
 				bind:files
-				onUpdate={() => {
+				onUpdate={(updatedFiles) => {
+					files = updatedFiles;
+					note.data.files = files.length > 0 ? files : null;
+
+					if (editor) {
+						editor.storage.files = files;
+						const fileIds = new Set(files.map((file) => file.id));
+						const ranges = [];
+
+						editor.state.doc.descendants((node, pos) => {
+							const src = node.attrs.src;
+							if (
+								node.type.name === 'image' &&
+								src?.startsWith('data://') &&
+								!fileIds.has(src.slice('data://'.length))
+							) {
+								ranges.push([pos, pos + node.nodeSize]);
+							}
+						});
+
+						if (ranges.length > 0) {
+							let transaction = editor.state.tr;
+							ranges.reverse().forEach(([from, to]) => {
+								transaction = transaction.delete(from, to);
+							});
+							editor.view.dispatch(transaction);
+						}
+					}
+
 					changeDebounceHandler();
 				}}
 			/>

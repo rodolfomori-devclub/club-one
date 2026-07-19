@@ -1,13 +1,24 @@
 <script lang="ts">
-	import { DropdownMenu } from 'bits-ui';
 	import { getContext, onMount, tick } from 'svelte';
 	import { fly } from 'svelte/transition';
-	import { flyAndScale } from '$lib/utils/transitions';
 
-	import { config, user, tools as _tools, mobile, settings, toolServers } from '$lib/stores';
+	import {
+		config,
+		user,
+		tools as _tools,
+		skills as _skills,
+		mobile,
+		settings,
+		toolServers,
+		terminalServers
+	} from '$lib/stores';
 
-	import { getOAuthClientAuthorizationUrl } from '$lib/apis/configs';
+	import { initiateOAuthRedirect } from '$lib/apis/configs';
+	import { deleteOAuthSession } from '$lib/apis/auths';
 	import { getTools } from '$lib/apis/tools';
+	import { getSkills } from '$lib/apis/skills';
+
+	import { toast } from 'svelte-sonner';
 
 	import Knobs from '$lib/components/icons/Knobs.svelte';
 	import Dropdown from '$lib/components/common/Dropdown.svelte';
@@ -15,16 +26,19 @@
 	import Switch from '$lib/components/common/Switch.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import Wrench from '$lib/components/icons/Wrench.svelte';
+	import Keyframes from '$lib/components/icons/Keyframes.svelte';
 	import Sparkles from '$lib/components/icons/Sparkles.svelte';
 	import GlobeAlt from '$lib/components/icons/GlobeAlt.svelte';
 	import Photo from '$lib/components/icons/Photo.svelte';
 	import Terminal from '$lib/components/icons/Terminal.svelte';
 	import ChevronRight from '$lib/components/icons/ChevronRight.svelte';
 	import ChevronLeft from '$lib/components/icons/ChevronLeft.svelte';
+	import LinkSlash from '$lib/components/icons/LinkSlash.svelte';
 
 	const i18n = getContext('i18n');
 
 	export let selectedToolIds: string[] = [];
+	export let selectedSkillIds: string[] = [];
 
 	export let selectedModels: string[] = [];
 	export let fileUploadCapableModels: string[] = [];
@@ -42,12 +56,14 @@
 
 	export let onShowValves: Function;
 	export let onClose: Function;
+	export let onWebSearchToggle: Function = () => {};
 	export let closeOnOutsideClick = true;
 
 	let show = false;
 	let tab = '';
 
 	let tools = null;
+	let skills = null;
 
 	$: if (show) {
 		init();
@@ -89,13 +105,33 @@
 		}
 
 		selectedToolIds = selectedToolIds.filter((id) => Object.keys(tools).includes(id));
+
+		if ($_skills === null) {
+			await _skills.set(await getSkills(localStorage.token));
+		}
+
+		if ($_skills) {
+			skills = $_skills
+				.filter((skill) => skill.is_active)
+				.reduce((a, skill) => {
+					a[skill.id] = {
+						name: skill.name,
+						description: skill.description,
+						enabled: selectedSkillIds.includes(skill.id),
+						...skill
+					};
+					return a;
+				}, {});
+		}
+
+		selectedSkillIds = selectedSkillIds.filter((id) => Object.keys(skills ?? {}).includes(id));
 	};
 </script>
 
 <Dropdown
 	bind:show
-	on:change={(e) => {
-		if (e.detail === false) {
+	onOpenChange={(state) => {
+		if (state === false) {
 			onClose();
 		}
 	}}
@@ -104,13 +140,8 @@
 		<slot />
 	</Tooltip>
 	<div slot="content">
-		<DropdownMenu.Content
-			class="w-full max-w-70 rounded-2xl px-1 py-1  border border-gray-100  dark:border-gray-800 z-50 bg-white dark:bg-gray-850 dark:text-white shadow-lg max-h-72 overflow-y-auto overflow-x-hidden scrollbar-thin"
-			sideOffset={4}
-			alignOffset={-6}
-			side="bottom"
-			align="start"
-			transition={flyAndScale}
+		<div
+			class="min-w-70 max-w-70 rounded-2xl px-1 py-1 border border-gray-100 dark:border-gray-800 z-50 bg-white dark:bg-gray-850 dark:text-white shadow-lg max-h-72 overflow-y-auto overflow-x-hidden scrollbar-thin"
 		>
 			{#if tab === ''}
 				<div in:fly={{ x: -20, duration: 150 }}>
@@ -128,6 +159,28 @@
 									<div class=" line-clamp-1">
 										{$i18n.t('Tools')}
 										<span class="ml-0.5 text-gray-500">{Object.keys(tools).length}</span>
+									</div>
+
+									<div class="text-gray-500">
+										<ChevronRight />
+									</div>
+								</div>
+							</button>
+						{/if}
+
+						{#if skills && Object.keys(skills).length > 0}
+							<button
+								class="flex w-full justify-between gap-2 items-center px-3 py-1.5 text-sm cursor-pointer rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50"
+								on:click={() => {
+									tab = 'skills';
+								}}
+							>
+								<Keyframes className="size-4" strokeWidth="1.75" />
+
+								<div class="flex items-center w-full justify-between">
+									<div class=" line-clamp-1">
+										{$i18n.t('Skills')}
+										<span class="ml-0.5 text-gray-500">{Object.keys(skills).length}</span>
 									</div>
 
 									<div class="text-gray-500">
@@ -162,7 +215,7 @@
 													<div class="size-4 items-center flex justify-center">
 														<img
 															src={filter.icon}
-															class="size-3.5 {filter.icon.includes('svg')
+															class="size-3.5 {filter.icon.includes('data:image/svg')
 																? 'dark:invert-[80%]'
 																: ''}"
 															style="fill: currentColor;"
@@ -178,7 +231,7 @@
 										</div>
 									</div>
 
-									{#if filter?.has_user_valves}
+									{#if filter?.has_user_valves && ($user?.role === 'admin' || ($user?.permissions?.chat?.valves ?? true))}
 										<div class=" shrink-0">
 											<Tooltip content={$i18n.t('Valves')}>
 												<button
@@ -217,8 +270,13 @@
 						<Tooltip content={$i18n.t('Search the internet')} placement="top-start">
 							<button
 								class="flex w-full justify-between gap-2 items-center px-3 py-1.5 text-sm cursor-pointer rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50"
+								aria-pressed={webSearchEnabled}
+								aria-label={webSearchEnabled
+									? $i18n.t('Disable Web Search')
+									: $i18n.t('Enable Web Search')}
 								on:click={() => {
 									webSearchEnabled = !webSearchEnabled;
+									onWebSearchToggle(webSearchEnabled);
 								}}
 							>
 								<div class="flex-1 truncate">
@@ -248,6 +306,10 @@
 						<Tooltip content={$i18n.t('Generate an image')} placement="top-start">
 							<button
 								class="flex w-full justify-between gap-2 items-center px-3 py-1.5 text-sm cursor-pointer rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50"
+								aria-pressed={imageGenerationEnabled}
+								aria-label={imageGenerationEnabled
+									? $i18n.t('Disable Image Generation')
+									: $i18n.t('Enable Image Generation')}
 								on:click={() => {
 									imageGenerationEnabled = !imageGenerationEnabled;
 								}}
@@ -335,11 +397,13 @@
 								if (!(tools[toolId]?.authenticated ?? true)) {
 									e.preventDefault();
 
-									let parts = toolId.split(':');
-									let serverId = parts?.at(-1) ?? toolId;
-
-									const authUrl = getOAuthClientAuthorizationUrl(serverId, 'mcp');
-									window.open(authUrl, '_self', 'noopener');
+									const parts = toolId.split(':');
+									initiateOAuthRedirect({
+										id: toolId,
+										serverId: parts.at(-1) ?? toolId,
+										authType:
+											parts.length > 1 ? (parts[0] === 'server' ? parts[1] : parts[0]) : null
+									});
 								} else {
 									tools[toolId].enabled = !tools[toolId].enabled;
 
@@ -371,7 +435,40 @@
 								</div>
 							</div>
 
-							{#if tools[toolId]?.has_user_valves}
+							{#if (tools[toolId]?.authenticated ?? true) && toolId.startsWith('server:mcp:')}
+								<div class="shrink-0">
+									<Tooltip content={$i18n.t('Disconnect OAuth')}>
+										<button
+											class="self-center w-fit text-sm text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition rounded-full"
+											type="button"
+											on:click={async (e) => {
+												e.stopPropagation();
+												e.preventDefault();
+
+												const parts = toolId.split(':');
+												const serverId = parts.at(-1) ?? toolId;
+												const provider = `mcp:${serverId}`;
+
+												try {
+													await deleteOAuthSession(localStorage.token, provider);
+													toast.success($i18n.t('OAuth session disconnected'));
+
+													// Refresh tools to update authenticated state
+													_tools.set(await getTools(localStorage.token));
+													selectedToolIds = selectedToolIds.filter((id) => id !== toolId);
+													await init();
+												} catch (err) {
+													toast.error(err ?? $i18n.t('Failed to disconnect'));
+												}
+											}}
+										>
+											<LinkSlash className="size-3.5" />
+										</button>
+									</Tooltip>
+								</div>
+							{/if}
+
+							{#if tools[toolId]?.has_user_valves && ($user?.role === 'admin' || ($user?.permissions?.chat?.valves ?? true))}
 								<div class=" shrink-0">
 									<Tooltip content={$i18n.t('Valves')}>
 										<button
@@ -398,7 +495,60 @@
 						</button>
 					{/each}
 				</div>
+			{:else if tab === 'skills' && skills}
+				<div in:fly={{ x: 20, duration: 150 }}>
+					<button
+						class="flex w-full justify-between gap-2 items-center px-3 py-1.5 text-sm cursor-pointer rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50"
+						on:click={() => {
+							tab = '';
+						}}
+					>
+						<ChevronLeft />
+
+						<div class="flex items-center w-full justify-between">
+							<div>
+								{$i18n.t('Skills')}
+								<span class="ml-0.5 text-gray-500">{Object.keys(skills).length}</span>
+							</div>
+						</div>
+					</button>
+
+					{#each Object.keys(skills) as skillId}
+						<button
+							class="relative flex w-full justify-between gap-2 items-center px-3 py-1.5 text-sm cursor-pointer rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50"
+							on:click={async () => {
+								skills[skillId].enabled = !skills[skillId].enabled;
+
+								const state = skills[skillId].enabled;
+								await tick();
+
+								if (state) {
+									selectedSkillIds = [...selectedSkillIds, skillId];
+								} else {
+									selectedSkillIds = selectedSkillIds.filter((id) => id !== skillId);
+								}
+							}}
+						>
+							<div class="flex-1 truncate">
+								<div class="flex flex-1 gap-2 items-center">
+									<Tooltip content={skills[skillId]?.name ?? ''} placement="top">
+										<div class="shrink-0">
+											<Keyframes className="size-4" strokeWidth="1.75" />
+										</div>
+									</Tooltip>
+									<Tooltip content={skills[skillId]?.description ?? ''} placement="top-start">
+										<div class=" truncate">{skills[skillId].name}</div>
+									</Tooltip>
+								</div>
+							</div>
+
+							<div class=" shrink-0">
+								<Switch state={skills[skillId].enabled} />
+							</div>
+						</button>
+					{/each}
+				</div>
 			{/if}
-		</DropdownMenu.Content>
+		</div>
 	</div>
 </Dropdown>

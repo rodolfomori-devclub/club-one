@@ -37,11 +37,13 @@
 	let showResetConfirm = false;
 	let showResetUploadDirConfirm = false;
 	let showReindexConfirm = false;
+	let showExternalDocumentLoaderHeadersHint = false;
 
 	let RAG_EMBEDDING_ENGINE = '';
 	let RAG_EMBEDDING_MODEL = '';
 	let RAG_EMBEDDING_BATCH_SIZE = 1;
 	let ENABLE_ASYNC_EMBEDDING = true;
+	let RAG_EMBEDDING_CONCURRENT_REQUESTS = 0;
 
 	let rerankingModel = '';
 
@@ -104,7 +106,8 @@
 			RAG_EMBEDDING_ENGINE,
 			RAG_EMBEDDING_MODEL,
 			RAG_EMBEDDING_BATCH_SIZE,
-			ENABLE_ASYNC_EMBEDDING
+			ENABLE_ASYNC_EMBEDDING,
+			RAG_EMBEDDING_CONCURRENT_REQUESTS
 		});
 
 		updateEmbeddingModelLoading = true;
@@ -113,6 +116,7 @@
 			RAG_EMBEDDING_MODEL: RAG_EMBEDDING_MODEL,
 			RAG_EMBEDDING_BATCH_SIZE: RAG_EMBEDDING_BATCH_SIZE,
 			ENABLE_ASYNC_EMBEDDING: ENABLE_ASYNC_EMBEDDING,
+			RAG_EMBEDDING_CONCURRENT_REQUESTS: RAG_EMBEDDING_CONCURRENT_REQUESTS,
 			ollama_config: {
 				key: OllamaKey,
 				url: OllamaUrl
@@ -145,6 +149,21 @@
 		) {
 			toast.error($i18n.t('External Document Loader URL required.'));
 			return;
+		}
+		if (
+			RAGConfig.CONTENT_EXTRACTION_ENGINE === 'external' &&
+			RAGConfig.EXTERNAL_DOCUMENT_LOADER_HEADERS
+		) {
+			try {
+				const headers = JSON.parse(RAGConfig.EXTERNAL_DOCUMENT_LOADER_HEADERS);
+				if (headers === null || typeof headers !== 'object' || Array.isArray(headers)) {
+					throw new Error('Headers must be a valid JSON object');
+				}
+				RAGConfig.EXTERNAL_DOCUMENT_LOADER_HEADERS = JSON.stringify(headers, null, 2);
+			} catch (error) {
+				toast.error($i18n.t('Headers must be a valid JSON object'));
+				return;
+			}
 		}
 		if (RAGConfig.CONTENT_EXTRACTION_ENGINE === 'tika' && RAGConfig.TIKA_SERVER_URL === '') {
 			toast.error($i18n.t('Tika Server URL required.'));
@@ -179,6 +198,13 @@
 			RAGConfig.MISTRAL_OCR_API_KEY === ''
 		) {
 			toast.error($i18n.t('Mistral OCR API Key required.'));
+			return;
+		}
+		if (
+			RAGConfig.CONTENT_EXTRACTION_ENGINE === 'paddleocr_vl' &&
+			RAGConfig.PADDLEOCR_VL_BASE_URL === ''
+		) {
+			toast.error($i18n.t('PaddleOCR-vl API URL required.'));
 			return;
 		}
 
@@ -218,6 +244,12 @@
 
 		const res = await updateRAGConfig(localStorage.token, {
 			...RAGConfig,
+			// Convert null (from cleared number inputs) to empty string so the backend
+			// can distinguish "clear this field" from "don't change this field"
+			FILE_MAX_SIZE: RAGConfig.FILE_MAX_SIZE ?? '',
+			FILE_MAX_COUNT: RAGConfig.FILE_MAX_COUNT ?? '',
+			FILE_IMAGE_COMPRESSION_WIDTH: RAGConfig.FILE_IMAGE_COMPRESSION_WIDTH ?? '',
+			FILE_IMAGE_COMPRESSION_HEIGHT: RAGConfig.FILE_IMAGE_COMPRESSION_HEIGHT ?? '',
 			ALLOWED_FILE_EXTENSIONS: RAGConfig.ALLOWED_FILE_EXTENSIONS.split(',')
 				.map((ext) => ext.trim())
 				.filter((ext) => ext !== ''),
@@ -225,10 +257,18 @@
 				typeof RAGConfig.DOCLING_PARAMS === 'string' && RAGConfig.DOCLING_PARAMS.trim() !== ''
 					? JSON.parse(RAGConfig.DOCLING_PARAMS)
 					: {},
+			EXTERNAL_DOCUMENT_LOADER_HEADERS:
+				typeof RAGConfig.EXTERNAL_DOCUMENT_LOADER_HEADERS === 'string' &&
+				RAGConfig.EXTERNAL_DOCUMENT_LOADER_HEADERS.trim() !== ''
+					? JSON.parse(RAGConfig.EXTERNAL_DOCUMENT_LOADER_HEADERS)
+					: {},
 			MINERU_PARAMS:
 				typeof RAGConfig.MINERU_PARAMS === 'string' && RAGConfig.MINERU_PARAMS.trim() !== ''
 					? JSON.parse(RAGConfig.MINERU_PARAMS)
-					: {}
+					: {},
+			MINERU_FILE_EXTENSIONS: RAGConfig.MINERU_FILE_EXTENSIONS.split(',')
+				.map((ext) => ext.trim())
+				.filter((ext) => ext !== '')
 		});
 		dispatch('save');
 	};
@@ -241,6 +281,7 @@
 			RAG_EMBEDDING_MODEL = embeddingConfig.RAG_EMBEDDING_MODEL;
 			RAG_EMBEDDING_BATCH_SIZE = embeddingConfig.RAG_EMBEDDING_BATCH_SIZE ?? 1;
 			ENABLE_ASYNC_EMBEDDING = embeddingConfig.ENABLE_ASYNC_EMBEDDING ?? true;
+			RAG_EMBEDDING_CONCURRENT_REQUESTS = embeddingConfig.RAG_EMBEDDING_CONCURRENT_REQUESTS ?? 0;
 
 			OpenAIKey = embeddingConfig.openai_config.key;
 			OpenAIUrl = embeddingConfig.openai_config.url;
@@ -268,6 +309,16 @@
 			typeof config.MINERU_PARAMS === 'object'
 				? JSON.stringify(config.MINERU_PARAMS ?? {}, null, 2)
 				: config.MINERU_PARAMS;
+
+		config.EXTERNAL_DOCUMENT_LOADER_HEADERS =
+			typeof config.EXTERNAL_DOCUMENT_LOADER_HEADERS === 'object'
+				? Object.keys(config.EXTERNAL_DOCUMENT_LOADER_HEADERS ?? {}).length > 0
+					? JSON.stringify(config.EXTERNAL_DOCUMENT_LOADER_HEADERS, null, 2)
+					: ''
+				: config.EXTERNAL_DOCUMENT_LOADER_HEADERS;
+
+		config.MINERU_FILE_EXTENSIONS = (config?.MINERU_FILE_EXTENSIONS ?? ['pdf']).join(', ');
+		config.RAG_TOKENIZER_MODEL = config?.RAG_TOKENIZER_MODEL ?? '';
 
 		RAGConfig = config;
 	});
@@ -336,7 +387,7 @@
 							</div>
 							<div class="">
 								<select
-									class="dark:bg-gray-900 w-fit pr-8 rounded-sm px-2 text-xs bg-transparent outline-hidden text-right"
+									class="w-fit pr-8 rounded-sm px-2 text-xs bg-transparent outline-hidden text-right"
 									bind:value={RAGConfig.CONTENT_EXTRACTION_ENGINE}
 								>
 									<option value="">{$i18n.t('Default')}</option>
@@ -346,6 +397,7 @@
 									<option value="datalab_marker">{$i18n.t('Datalab Marker API')}</option>
 									<option value="document_intelligence">{$i18n.t('Document Intelligence')}</option>
 									<option value="mistral_ocr">{$i18n.t('Mistral OCR')}</option>
+									<option value="paddleocr_vl">{$i18n.t('PaddleOCR-vl')}</option>
 									<option value="mineru">{$i18n.t('MinerU')}</option>
 								</select>
 							</div>
@@ -359,6 +411,30 @@
 									</div>
 									<div class="flex items-center relative">
 										<Switch bind:state={RAGConfig.PDF_EXTRACT_IMAGES} />
+									</div>
+								</div>
+							</div>
+
+							<div class="flex w-full mt-2">
+								<div class="flex-1 flex justify-between">
+									<div class=" self-center text-xs font-medium">
+										<Tooltip
+											content={$i18n.t(
+												'Page mode creates one document per page. Single mode combines all pages into one document for better chunking across page boundaries.'
+											)}
+											placement="top-start"
+										>
+											{$i18n.t('PDF Loader Mode')}
+										</Tooltip>
+									</div>
+									<div class="">
+										<select
+											class="w-fit pr-8 rounded-sm px-2 text-xs bg-transparent outline-hidden text-right"
+											bind:value={RAGConfig.PDF_LOADER_MODE}
+										>
+											<option value="page">{$i18n.t('Page')}</option>
+											<option value="single">{$i18n.t('Single')}</option>
+										</select>
 									</div>
 								</div>
 							</div>
@@ -524,7 +600,7 @@
 								</div>
 								<div class="">
 									<select
-										class="dark:bg-gray-900 w-fit pr-8 rounded-sm px-2 text-xs bg-transparent outline-hidden text-right"
+										class="w-fit pr-8 rounded-sm px-2 text-xs bg-transparent outline-hidden text-right"
 										bind:value={RAGConfig.DATALAB_MARKER_OUTPUT_FORMAT}
 									>
 										<option value="markdown">{$i18n.t('Markdown')}</option>
@@ -534,17 +610,78 @@
 								</div>
 							</div>
 						{:else if RAGConfig.CONTENT_EXTRACTION_ENGINE === 'external'}
-							<div class="my-0.5 flex gap-2 pr-2">
-								<input
-									class="flex-1 w-full text-sm bg-transparent outline-hidden"
-									placeholder={$i18n.t('Enter External Document Loader URL')}
-									bind:value={RAGConfig.EXTERNAL_DOCUMENT_LOADER_URL}
-								/>
-								<SensitiveInput
-									placeholder={$i18n.t('Enter External Document Loader API Key')}
-									required={false}
-									bind:value={RAGConfig.EXTERNAL_DOCUMENT_LOADER_API_KEY}
-								/>
+							<div class="my-0.5 flex flex-col gap-2 pr-2">
+								<div class="flex gap-2">
+									<input
+										class="flex-1 w-full text-sm bg-transparent outline-hidden"
+										placeholder={$i18n.t('Enter External Document Loader URL')}
+										bind:value={RAGConfig.EXTERNAL_DOCUMENT_LOADER_URL}
+									/>
+									<SensitiveInput
+										placeholder={$i18n.t('Enter External Document Loader API Key')}
+										required={false}
+										bind:value={RAGConfig.EXTERNAL_DOCUMENT_LOADER_API_KEY}
+									/>
+								</div>
+								<div class="flex flex-col">
+									<div class="mb-0.5 text-xs text-gray-500">{$i18n.t('Headers')}</div>
+									<Tooltip
+										content={$i18n.t(
+											'Enter additional headers in JSON format (e.g. {"X-Custom-Header": "value"}'
+										)}
+									>
+										<Textarea
+											className="w-full text-sm outline-hidden"
+											bind:value={RAGConfig.EXTERNAL_DOCUMENT_LOADER_HEADERS}
+											placeholder={$i18n.t('Enter additional headers in JSON format')}
+											required={false}
+										/>
+									</Tooltip>
+									<button
+										type="button"
+										class="mt-1 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition w-fit"
+										on:click={() =>
+											(showExternalDocumentLoaderHeadersHint =
+												!showExternalDocumentLoaderHeadersHint)}
+									>
+										<svg
+											xmlns="http://www.w3.org/2000/svg"
+											viewBox="0 0 20 20"
+											fill="currentColor"
+											class="w-3 h-3 transition-transform {showExternalDocumentLoaderHeadersHint
+												? 'rotate-90'
+												: ''}"
+										>
+											<path
+												fill-rule="evenodd"
+												d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
+												clip-rule="evenodd"
+											/>
+										</svg>
+										{$i18n.t('Header variables')}
+									</button>
+									{#if showExternalDocumentLoaderHeadersHint}
+										<div class="mt-1 text-xs text-gray-500 dark:text-gray-400 leading-5">
+											<div>
+												{$i18n.t('No additional headers are sent unless configured.')}
+											</div>
+											<div>
+												{$i18n.t('Example')}:
+												<code class="text-gray-700 dark:text-gray-300"
+													>{'{"X-OpenWebUI-File-Id": "{{FILE_ID}}"}'}</code
+												>
+											</div>
+											<div>
+												{$i18n.t('Available variables')}:
+												<code class="text-gray-700 dark:text-gray-300">{'{{FILE_ID}}'}</code>,
+												<code class="text-gray-700 dark:text-gray-300">{'{{FILE_NAME}}'}</code>,
+												<code class="text-gray-700 dark:text-gray-300"
+													>{'{{FILE_CONTENT_TYPE}}'}</code
+												>
+											</div>
+										</div>
+									{/if}
+								</div>
 							</div>
 						{:else if RAGConfig.CONTENT_EXTRACTION_ENGINE === 'tika'}
 							<div class="flex w-full mt-1">
@@ -623,6 +760,34 @@
 									bind:value={RAGConfig.MISTRAL_OCR_API_KEY}
 								/>
 							</div>
+							<div class="flex justify-between w-full mt-2 pr-2">
+								<div class="self-center text-xs font-medium">
+									<Tooltip
+										content={$i18n.t(
+											'Send the PDF as a base64 data URL instead of uploading it first.'
+										)}
+										placement="top-start"
+									>
+										{$i18n.t('Use Base64')}
+									</Tooltip>
+								</div>
+								<div class="flex items-center">
+									<Switch bind:state={RAGConfig.MISTRAL_OCR_USE_BASE64} />
+								</div>
+							</div>
+						{:else if RAGConfig.CONTENT_EXTRACTION_ENGINE === 'paddleocr_vl'}
+							<div class="my-0.5 flex gap-2 pr-2">
+								<input
+									class="flex-1 w-full text-sm bg-transparent outline-hidden"
+									placeholder={$i18n.t('Enter PaddleOCR-vl API Base URL')}
+									bind:value={RAGConfig.PADDLEOCR_VL_BASE_URL}
+								/>
+								<SensitiveInput
+									placeholder={$i18n.t('Enter PaddleOCR-vl API Token')}
+									bind:value={RAGConfig.PADDLEOCR_VL_TOKEN}
+									required={false}
+								/>
+							</div>
 						{:else if RAGConfig.CONTENT_EXTRACTION_ENGINE === 'mineru'}
 							<!-- API Mode Selection -->
 							<div class="flex w-full mt-2">
@@ -631,7 +796,7 @@
 										{$i18n.t('API Mode')}
 									</div>
 									<select
-										class="dark:bg-gray-900 w-fit pr-8 rounded-sm px-2 text-xs bg-transparent outline-hidden"
+										class="w-fit pr-8 rounded-sm px-2 text-xs bg-transparent outline-hidden"
 										bind:value={RAGConfig.MINERU_API_MODE}
 										on:change={() => {
 											// Auto-update URL when switching modes if it's empty or matches the opposite mode's default
@@ -670,8 +835,22 @@
 								<SensitiveInput
 									placeholder={$i18n.t('Enter MinerU API Key')}
 									bind:value={RAGConfig.MINERU_API_KEY}
-									required={false}
 								/>
+							</div>
+
+							<div class="flex w-full mt-2">
+								<div class="flex-1 flex justify-between">
+									<div class="self-center text-xs font-medium">
+										{$i18n.t('API Timeout')}
+									</div>
+									<input
+										class="w-16 text-sm bg-transparent outline-hidden text-right"
+										type="number"
+										min="1"
+										bind:value={RAGConfig.MINERU_API_TIMEOUT}
+										placeholder="60"
+									/>
+								</div>
 							</div>
 
 							<!-- Parameters -->
@@ -693,6 +872,25 @@
 										minSize={100}
 									/>
 								</div>
+							</div>
+
+							<!-- File Extensions -->
+							<div class="flex flex-col justify-between w-full mt-2">
+								<div class="text-xs font-medium mb-1">
+									<Tooltip
+										content={$i18n.t(
+											'Comma-separated list of file extensions MinerU will handle (e.g. pdf, docx, pptx, xlsx)'
+										)}
+										placement="top-start"
+									>
+										{$i18n.t('File Extensions')}
+									</Tooltip>
+								</div>
+								<input
+									class="flex-1 w-full text-sm bg-transparent outline-hidden"
+									placeholder={$i18n.t('pdf, docx, pptx, xlsx')}
+									bind:value={RAGConfig.MINERU_FILE_EXTENSIONS}
+								/>
 							</div>
 						{/if}
 					</div>
@@ -723,13 +921,48 @@
 							<div class=" self-center text-xs font-medium">{$i18n.t('Text Splitter')}</div>
 							<div class="flex items-center relative">
 								<select
-									class="dark:bg-gray-900 w-fit pr-8 rounded-sm px-2 text-xs bg-transparent outline-hidden text-right"
+									class="w-fit pr-8 rounded-sm px-2 text-xs bg-transparent outline-hidden text-right"
 									bind:value={RAGConfig.TEXT_SPLITTER}
 								>
 									<option value="">{$i18n.t('Default')} ({$i18n.t('Character')})</option>
 									<option value="token">{$i18n.t('Token')} ({$i18n.t('Tiktoken')})</option>
-									<option value="markdown_header">{$i18n.t('Markdown (Header)')}</option>
+									<option value="token_transformers">
+										{$i18n.t('Token')} ({$i18n.t('Transformers')})
+									</option>
 								</select>
+							</div>
+						</div>
+
+						{#if RAGConfig.TEXT_SPLITTER === 'token_transformers'}
+							<div class="mb-2.5 flex flex-col w-full justify-between">
+								<div class="self-center text-xs font-medium min-w-fit mb-1 w-full">
+									{$i18n.t('Tokenizer Model')}
+								</div>
+								<div class="self-center w-full">
+									<input
+										class="w-full rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+										placeholder={$i18n.t('Enter Tokenizer Model')}
+										bind:value={RAGConfig.RAG_TOKENIZER_MODEL}
+										autocomplete="off"
+										required={RAG_EMBEDDING_ENGINE !== ''}
+									/>
+								</div>
+							</div>
+						{/if}
+
+						<div class="  mb-2.5 flex w-full justify-between">
+							<div class=" self-center text-xs font-medium">
+								<Tooltip
+									placement="top-start"
+									content={$i18n.t(
+										'Split documents by markdown headers before applying character/token splitting.'
+									)}
+								>
+									{$i18n.t('Markdown Header Text Splitter')}
+								</Tooltip>
+							</div>
+							<div class="flex items-center relative">
+								<Switch bind:state={RAGConfig.ENABLE_MARKDOWN_HEADER_TEXT_SPLITTER} />
 							</div>
 						</div>
 
@@ -769,6 +1002,35 @@
 								</div>
 							</div>
 						</div>
+
+						{#if RAGConfig.ENABLE_MARKDOWN_HEADER_TEXT_SPLITTER}
+							<div class="  mb-2.5 flex w-full justify-between">
+								<div class=" flex gap-1.5 w-full">
+									<div class="w-full">
+										<div class="self-center text-xs font-medium min-w-fit mb-1">
+											<Tooltip
+												placement="top-start"
+												content={$i18n.t(
+													'Chunks smaller than this threshold will be merged with neighboring chunks when possible. Set to 0 to disable merging.'
+												)}
+											>
+												{$i18n.t('Chunk Min Size Target')}
+											</Tooltip>
+										</div>
+										<div class="self-center">
+											<input
+												class="w-full rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+												type="number"
+												placeholder={$i18n.t('Enter Chunk Min Size Target')}
+												bind:value={RAGConfig.CHUNK_MIN_SIZE_TARGET}
+												autocomplete="off"
+												min="0"
+											/>
+										</div>
+									</div>
+								</div>
+							</div>
+						{/if}
 					{/if}
 				</div>
 
@@ -785,7 +1047,7 @@
 								</div>
 								<div class="flex items-center relative">
 									<select
-										class="dark:bg-gray-900 w-fit pr-8 rounded-sm px-2 p-1 text-xs bg-transparent outline-hidden text-right"
+										class="w-fit pr-8 rounded-sm px-2 p-1 text-xs bg-transparent outline-hidden text-right"
 										bind:value={RAG_EMBEDDING_ENGINE}
 										placeholder={$i18n.t('Select an embedding model engine')}
 										on:change={(e) => {
@@ -928,24 +1190,24 @@
 							</div>
 						</div>
 
-						{#if RAG_EMBEDDING_ENGINE === 'ollama' || RAG_EMBEDDING_ENGINE === 'openai' || RAG_EMBEDDING_ENGINE === 'azure_openai'}
-							<div class="  mb-2.5 flex w-full justify-between">
-								<div class=" self-center text-xs font-medium">
-									{$i18n.t('Embedding Batch Size')}
-								</div>
-
-								<div class="">
-									<input
-										bind:value={RAG_EMBEDDING_BATCH_SIZE}
-										type="number"
-										class=" bg-transparent text-center w-14 outline-none"
-										min="-2"
-										max="16000"
-										step="1"
-									/>
-								</div>
+						<div class="  mb-2.5 flex w-full justify-between">
+							<div class=" self-center text-xs font-medium">
+								{$i18n.t('Embedding Batch Size')}
 							</div>
 
+							<div class="">
+								<input
+									bind:value={RAG_EMBEDDING_BATCH_SIZE}
+									type="number"
+									class=" bg-transparent text-center w-14 outline-none"
+									min="-2"
+									max="16000"
+									step="1"
+								/>
+							</div>
+						</div>
+
+						{#if RAG_EMBEDDING_ENGINE === 'ollama' || RAG_EMBEDDING_ENGINE === 'openai' || RAG_EMBEDDING_ENGINE === 'azure_openai'}
 							<div class="  mb-2.5 flex w-full justify-between">
 								<div class="self-center text-xs font-medium">
 									<Tooltip
@@ -961,14 +1223,38 @@
 									<Switch bind:state={ENABLE_ASYNC_EMBEDDING} />
 								</div>
 							</div>
+
+							<div class="  mb-2.5 flex w-full justify-between">
+								<div class="self-center text-xs font-medium">
+									<Tooltip
+										content={$i18n.t(
+											'Limits the number of concurrent embedding requests. Set to 0 for unlimited.'
+										)}
+										placement="top-start"
+									>
+										{$i18n.t('Embedding Concurrent Requests')}
+									</Tooltip>
+								</div>
+								<div class="">
+									<input
+										bind:value={RAG_EMBEDDING_CONCURRENT_REQUESTS}
+										type="number"
+										class=" bg-transparent text-center w-14 outline-none"
+										min="0"
+										step="1"
+									/>
+								</div>
+							</div>
 						{/if}
 					</div>
+				{/if}
 
-					<div class="mb-3">
-						<div class=" mt-0.5 mb-2.5 text-base font-medium">{$i18n.t('Retrieval')}</div>
+				<div class="mb-3">
+					<div class=" mt-0.5 mb-2.5 text-base font-medium">{$i18n.t('Retrieval')}</div>
 
-						<hr class=" border-gray-100/30 dark:border-gray-850/30 my-2" />
+					<hr class=" border-gray-100/30 dark:border-gray-850/30 my-2" />
 
+					{#if !RAGConfig.BYPASS_EMBEDDING_AND_RETRIEVAL}
 						<div class="  mb-2.5 flex w-full justify-between">
 							<div class=" self-center text-xs font-medium">{$i18n.t('Full Context Mode')}</div>
 							<div class="flex items-center relative">
@@ -1017,7 +1303,7 @@
 										</div>
 										<div class="flex items-center relative">
 											<select
-												class="dark:bg-gray-900 w-fit pr-8 rounded-sm px-2 p-1 text-xs bg-transparent outline-hidden text-right"
+												class="w-fit pr-8 rounded-sm px-2 p-1 text-xs bg-transparent outline-hidden text-right"
 												bind:value={RAGConfig.RAG_RERANKING_ENGINE}
 												placeholder={$i18n.t('Select a reranking model engine')}
 												on:change={(e) => {
@@ -1070,6 +1356,23 @@
 									</div>
 								</div>
 							{/if}
+
+							<div class="  mb-2.5 flex w-full justify-between">
+								<div class=" self-center text-xs font-medium">
+									{$i18n.t('Reranking Batch Size')}
+								</div>
+
+								<div class="">
+									<input
+										bind:value={RAGConfig.RAG_RERANKING_BATCH_SIZE}
+										type="number"
+										class=" bg-transparent text-center w-14 outline-none"
+										min="1"
+										max="16000"
+										step="1"
+									/>
+								</div>
+							</div>
 
 							<div class="  mb-2.5 flex w-full justify-between">
 								<div class=" self-center text-xs font-medium">{$i18n.t('Top K')}</div>
@@ -1199,28 +1502,34 @@
 								</div>
 							{/if}
 						{/if}
+					{/if}
 
-						<div class="  mb-2.5 flex flex-col w-full justify-between">
-							<div class=" mb-1 text-xs font-medium">{$i18n.t('RAG Template')}</div>
-							<div class="flex w-full items-center relative">
-								<Tooltip
-									content={$i18n.t(
+					<div class="  mb-2.5 flex flex-col w-full justify-between">
+						<div class=" mb-1 text-xs font-medium">{$i18n.t('RAG Template')}</div>
+						<div class="flex w-full items-center relative">
+							<Tooltip
+								content={$i18n.t('Leave empty to use the default prompt, or enter a custom prompt')}
+								placement="top-start"
+								className="w-full"
+							>
+								<Textarea
+									bind:value={RAGConfig.RAG_TEMPLATE}
+									placeholder={$i18n.t(
 										'Leave empty to use the default prompt, or enter a custom prompt'
 									)}
-									placement="top-start"
-									className="w-full"
-								>
-									<Textarea
-										bind:value={RAGConfig.RAG_TEMPLATE}
-										placeholder={$i18n.t(
-											'Leave empty to use the default prompt, or enter a custom prompt'
-										)}
-									/>
-								</Tooltip>
-							</div>
+								/>
+							</Tooltip>
 						</div>
+
+						{#if RAGConfig.RAG_TEMPLATE && (RAGConfig.RAG_TEMPLATE.match(/\[context\]/g) || []).length + (RAGConfig.RAG_TEMPLATE.match(/\{\{CONTEXT\}\}/g) || []).length > 1}
+							<div class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+								{$i18n.t(
+									'This template contains multiple context placeholders ([context] or {{CONTEXT}}). Context will be injected at each occurrence.'
+								)}
+							</div>
+						{/if}
 					</div>
-				{/if}
+				</div>
 
 				<div class="mb-3">
 					<div class=" mt-0.5 mb-2.5 text-base font-medium">{$i18n.t('Files')}</div>
