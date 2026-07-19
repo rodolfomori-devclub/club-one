@@ -1,0 +1,69 @@
+name: Build ClubHub image (amd64 → GHCR)
+
+# Builda a imagem do ClubHub (Open WebUI 0.10.2 customizado) para linux/amd64
+# nativamente no runner do GitHub e publica no GHCR da org. O box de prod
+# (Hostinger) é amd64, então NÃO dá para usar imagem buildada em Mac (arm64).
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - upgrade/owui-0.10.2
+    paths:
+      - "open-webui/**"
+      - ".github/workflows/build-clubhub.yml"
+
+env:
+  IMAGE: ghcr.io/rodolfomori-devclub/clubhub-open-webui
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # A imagem tem torch/transformers etc. (~6GB) — libera disco no runner.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/share/boost /opt/hostedtoolcache/CodeQL || true
+          sudo docker image prune -af || true
+          df -h /
+
+      - name: Short SHA
+        id: sha
+        run: echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push (linux/amd64)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./open-webui
+          file: ./open-webui/Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          build-args: |
+            BUILD_HASH=${{ steps.sha.outputs.sha }}
+          tags: |
+            ${{ env.IMAGE }}:0.10.2
+            ${{ env.IMAGE }}:0.10.2-${{ steps.sha.outputs.sha }}
+            ${{ env.IMAGE }}:latest
+
+      - name: Resumo
+        run: |
+          echo "Publicado:" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`${{ env.IMAGE }}:0.10.2-${{ steps.sha.outputs.sha }}\` (imutável, âncora de rollback)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`${{ env.IMAGE }}:0.10.2\` e \`:latest\`" >> "$GITHUB_STEP_SUMMARY"
