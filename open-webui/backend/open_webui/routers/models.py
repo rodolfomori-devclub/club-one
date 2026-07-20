@@ -594,9 +594,13 @@ def _get_provider_logo_path(provider: str | None):
 async def get_model_profile_image(
     request: Request,
     id: str,
-    user=Depends(get_verified_user),
     db: AsyncSession = Depends(get_async_session),
 ):
+    # ClubHub: rota de avatar PÚBLICA (sem get_verified_user). No embed em iframe
+    # cross-origin, o <img> só manda cookie (não o Bearer do localStorage) e o cookie
+    # de 3ª-parte é bloqueado pelo browser → 401 → caía no fallback "CH". O avatar
+    # servido aqui é o logo do provider (SVG público em /static/icons), não é dado
+    # sensível, então liberar sem auth é seguro e faz os logos renderizarem no iframe.
     profile_image_url = None
     updated_at = None
 
