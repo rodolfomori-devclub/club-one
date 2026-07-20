@@ -999,6 +999,10 @@
 										class=" size-7 object-cover rounded-full"
 										alt={$i18n.t('Open User Profile Menu')}
 										aria-label={$i18n.t('Open User Profile Menu')}
+										on:error={(e) => {
+											// ClubHub: rota exige cookie; no iframe cross-origin dá 401 -> avatar padrão.
+											e.currentTarget.src = `${WEBUI_BASE_URL}/user.png`;
+										}}
 									/>
 
 									{#if $config?.features?.enable_user_status}

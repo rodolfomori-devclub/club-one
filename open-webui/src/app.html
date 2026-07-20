@@ -58,8 +58,10 @@
 					return;
 				}
 
+				// ClubHub: tema padrão é ESCURO (claro é secundário, via toggle). Sem ?theme=
+				// do host e sem preferência salva, abre no escuro.
 				if (!localStorage?.theme) {
-					localStorage.theme = 'system';
+					localStorage.theme = 'dark';
 				}
 
 				if (localStorage.theme === 'system') {
