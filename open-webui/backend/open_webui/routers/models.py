@@ -601,6 +601,17 @@ async def get_model_profile_image(
     # de 3ª-parte é bloqueado pelo browser → 401 → caía no fallback "CH". O avatar
     # servido aqui é o logo do provider (SVG público em /static/icons), não é dado
     # sensível, então liberar sem auth é seguro e faz os logos renderizarem no iframe.
+    #
+    # ClubHub: se o id mapeia a um provider conhecido (claude-*, deepseek-*, gpt-*, …),
+    # o logo do provider SEMPRE vence — assim os avatares ficam consistentes mesmo quando
+    # o DB (importado da prod antiga) guarda um profile_image_url legado que o 0.10.2
+    # rejeita (ex.: data-uri SVG) e cairia no favicon. Modelos custom (sem provider
+    # reconhecido) seguem o fluxo normal e mantêm a imagem própria do DB.
+    provider = _get_provider_from_model_id(id)
+    logo_path = _get_provider_logo_path(provider)
+    if logo_path:
+        return FileResponse(logo_path, media_type='image/svg+xml')
+
     profile_image_url = None
     updated_at = None
 
@@ -664,12 +675,7 @@ async def get_model_profile_image(
                     status_code=status.HTTP_302_FOUND,
                 )
 
-    # ClubHub: fallback para o logo do provider (modelos LiteLLM e do DB sem imagem).
-    provider = _get_provider_from_model_id(id)
-    logo_path = _get_provider_logo_path(provider)
-    if logo_path:
-        return FileResponse(logo_path, media_type='image/svg+xml')
-
+    # Sem provider conhecido e sem imagem própria válida — cai no avatar padrão.
     return RedirectResponse(
         url='/static/favicon.png',
         status_code=status.HTTP_302_FOUND,
