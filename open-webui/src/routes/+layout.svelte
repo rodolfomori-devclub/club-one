@@ -1186,18 +1186,12 @@
 		// Initialize i18n even if we didn't get a backend config,
 		// so `/error` can show something that's not `undefined`.
 
-		initI18n(localStorage?.locale ?? 'pt-BR');
-		if (!localStorage.locale) {
-			const languages = await getLanguages();
-			const browserLanguages = navigator.languages
-				? navigator.languages
-				: [navigator.language || navigator.userLanguage];
-			const lang = backendConfig?.default_locale
-				? backendConfig.default_locale
-				: bestMatchingLanguage(languages, browserLanguages, 'en-US');
-			changeLanguage(lang);
-			dayjs.locale(lang);
-		}
+		// ClubHub: idioma SEMPRE português do Brasil. Ignora a detecção pelo idioma do
+		// browser (que jogava a UI pra inglês quando não havia locale salvo).
+		initI18n('pt-BR');
+		localStorage.locale = 'pt-BR';
+		changeLanguage('pt-BR');
+		dayjs.locale('pt-BR');
 
 		if (backendConfig) {
 			// Save Backend Status to Store

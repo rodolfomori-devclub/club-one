@@ -118,6 +118,12 @@
 
 	$: pinnedItems = $settings?.pinnedMenuItems ?? DEFAULT_PINNED_ITEMS;
 
+	// ClubHub: sidebar sempre aberta no desktop — reabre se algo tentar fechar (o toggle
+	// vira efetivamente sem efeito). No mobile mantém o comportamento de overlay.
+	$: if (!$mobile && !$showSidebar) {
+		showSidebar.set(true);
+	}
+
 	const isMenuItemVisible = (id) => {
 		switch (id) {
 			case 'notes':
@@ -554,10 +560,10 @@
 			document.documentElement.style.setProperty('--sidebar-width', `${w}px`);
 		});
 
-		// ClubHub: sidebar EXPANDIDA por padrão no desktop. Num iframe novo (sem
-		// localStorage.sidebar) ficava colapsada = tira estreita "estranha". Só colapsa
-		// se o usuário explicitamente escolheu 'false'.
-		showSidebar.set(!$mobile ? (localStorage.sidebar ?? 'true') === 'true' : false);
+		// ClubHub: sidebar SEMPRE aberta no desktop (sem opção de fechar). No mobile
+		// continua overlay recolhível. O reactive `keepSidebarOpen` abaixo reabre caso
+		// algo tente fechar no desktop.
+		showSidebar.set(!$mobile);
 
 		const unsubscribers = [
 			mobile.subscribe((value) => {
