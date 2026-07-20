@@ -37,6 +37,11 @@
 	import ChatBubbleOval from '$lib/components/icons/ChatBubbleOval.svelte';
 
 	import ModelItem from './ModelItem.svelte';
+	// ClubHub: seletor agrupado por provedor (estilo 0.6.41). Dados e skin já portados
+	// (providers.ts + custom.css). Usa acordeão (o DropdownMenu/flyout do 0.6.41 não
+	// existe mais no 0.10.2). Busca cai no modo plano (lista virtualizada nativa).
+	import ProviderIcon from './ProviderIcon.svelte';
+	import { buildModelGroups, deriveProvider } from './providers';
 
 	const i18n = getContext('i18n');
 	const dispatch = createEventDispatcher();
@@ -92,6 +97,8 @@
 		show = !show;
 		if (show) {
 			searchValue = '';
+			// abre o grupo do modelo selecionado (se for multi-versão)
+			expandedProvider = selectedModel && selectedModel.model ? deriveProvider(selectedModel.model) : '';
 			listScrollTop = 0;
 			resetView();
 			updatePosition();
@@ -135,6 +142,25 @@
 
 	let ollamaVersion = null;
 	let selectedModelIdx = 0;
+
+	// ── ClubHub: agrupamento por provedor (acordeão) ──────────────────────────
+	let expandedProvider = '';
+	const selectValue = (v: string) => {
+		value = v;
+		show = false;
+	};
+	// Modo agrupado = sem busca/tag/filtro ativo. Busca cai no modo plano.
+	$: grouped = searchValue.trim() === '' && selectedTag === '' && selectedConnectionType === '';
+	$: groups = buildModelGroups(filteredItems, {
+		defaultModels: Array.isArray($config?.default_models)
+			? $config.default_models
+			: String($config?.default_models ?? '')
+					.split(',')
+					.map((s) => s.trim())
+					.filter(Boolean),
+		pinnedModels: $settings?.pinnedModels ?? [],
+		t: (k) => $i18n.t(k)
+	});
 
 	const fuse = new Fuse(
 		items.map((item) => {
@@ -551,7 +577,7 @@
 				: ''}"
 		>
 			<div
-				class="z-40 {$mobile
+				class="mh-model-dropdown z-40 {$mobile
 					? `w-full`
 					: `${className}`} max-w-[calc(100vw-1rem)] justify-start rounded-2xl bg-white dark:bg-gray-850 dark:text-white shadow-lg outline-hidden"
 				transition:flyAndScale
@@ -569,7 +595,7 @@
 								autocomplete="off"
 								aria-label={$i18n.t('Search In Models')}
 								on:keydown={(e) => {
-									if (e.code === 'Enter' && filteredItems.length > 0) {
+									if (!grouped && e.code === 'Enter' && filteredItems.length > 0) {
 										value = filteredItems[selectedModelIdx].value;
 										show = false;
 										return; // dont need to scroll on selection
@@ -722,6 +748,104 @@
 									</div>
 								</div>
 							{/if}
+						{:else if grouped}
+							<!-- ClubHub: seletor agrupado por provedor (acordeão) -->
+							<div
+								class="max-h-64 overflow-y-auto"
+								role="listbox"
+								aria-label={$i18n.t('Available models')}
+							>
+								{#if groups.featured.length > 0}
+									<div class="mh-section-label">{$i18n.t('Featured')}</div>
+									{#each groups.featured as entry (entry.value)}
+										<button
+											type="button"
+											class="mh-provider-row"
+											on:click={() => selectValue(entry.value)}
+										>
+											<ProviderIcon provider={deriveProvider(entry.model)} />
+											<span class="mh-prov-name">{entry.version}</span>
+											{#if entry.badge}
+												<span class="mh-badge mh-badge-{entry.badge.variant}">{entry.badge.label}</span>
+											{/if}
+											{#if entry.descriptor}
+												<span class="mh-badge-desc">{entry.descriptor}</span>
+											{/if}
+											{#if value === entry.value}
+												<span class="ml-auto text-gray-500"><Check className="size-3.5" /></span>
+											{/if}
+										</button>
+									{/each}
+								{/if}
+
+								{#if groups.providers.length > 0}
+									<div class="mh-section-label">{$i18n.t('Models')}</div>
+								{/if}
+								{#each groups.providers as g (g.provider)}
+									{@const groupSelected = g.models.some((m) => m.value === value)}
+									{#if g.single}
+										<button
+											type="button"
+											class="mh-provider-row"
+											on:click={() => selectValue(g.models[0].value)}
+										>
+											<ProviderIcon provider={g.provider} />
+											<span class="mh-prov-name">{g.models[0].version}</span>
+											{#if g.models[0].badge}
+												<span class="mh-badge mh-badge-{g.models[0].badge.variant}"
+													>{g.models[0].badge.label}</span
+												>
+											{/if}
+											{#if g.models[0].descriptor}
+												<span class="mh-badge-desc">{g.models[0].descriptor}</span>
+											{/if}
+											{#if value === g.models[0].value}
+												<span class="ml-auto text-gray-500"><Check className="size-3.5" /></span>
+											{/if}
+										</button>
+									{:else}
+										<button
+											type="button"
+											class="mh-provider-row"
+											aria-expanded={expandedProvider === g.provider}
+											on:click={() =>
+												(expandedProvider = expandedProvider === g.provider ? '' : g.provider)}
+										>
+											<ProviderIcon provider={g.provider} />
+											<span class="mh-prov-name">{g.label}</span>
+											<span class="mh-prov-count">{g.models.length}</span>
+											{#if groupSelected}<span class="mh-prov-dot" />{/if}
+											<span
+												class="mh-prov-chev"
+												style="transform: rotate({expandedProvider === g.provider
+													? 180
+													: 0}deg); transition: transform .15s"
+											>
+												<ChevronDown className="size-3.5" strokeWidth="2.5" />
+											</span>
+										</button>
+										{#if expandedProvider === g.provider}
+											{#each g.models as v (v.value)}
+												<button
+													type="button"
+													class="mh-provider-row"
+													style="padding-left: 2.75rem"
+													on:click={() => selectValue(v.value)}
+												>
+													<span class="mh-ver-name">{v.variant}</span>
+													{#if v.badge}
+														<span class="mh-badge mh-badge-{v.badge.variant}">{v.badge.label}</span>
+													{/if}
+													{#if v.descriptor}<span class="mh-badge-desc">{v.descriptor}</span>{/if}
+													{#if value === v.value}
+														<span class="ml-auto text-gray-500"><Check className="size-3.5" /></span>
+													{/if}
+												</button>
+											{/each}
+										{/if}
+									{/if}
+								{/each}
+							</div>
 						{:else}
 							<!-- svelte-ignore a11y-no-static-element-interactions -->
 							<div
