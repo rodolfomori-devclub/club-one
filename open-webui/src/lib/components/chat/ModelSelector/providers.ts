@@ -196,7 +196,19 @@ export function humanVersion(model: any): string {
 		.filter(Boolean)
 		.filter((tok) => !/^\d{6,}$/.test(tok));
 
-	return parts.map(titleTok).join(' ') || base;
+	// Junta sequências de tokens puramente numéricos com ponto: ["4","5"] -> "4.5".
+	// Ids Claude usam "claude-haiku-4-5"; sem isso o nome viraria "Claude Haiku 4 5".
+	const merged: string[] = [];
+	for (const tok of parts) {
+		const prev = merged[merged.length - 1];
+		if (/^\d+$/.test(tok) && prev && /^\d+(\.\d+)*$/.test(prev)) {
+			merged[merged.length - 1] = `${prev}.${tok}`;
+		} else {
+			merged.push(tok);
+		}
+	}
+
+	return merged.map(titleTok).join(' ') || base;
 }
 
 // Rótulo amigável SEM a marca, ordenado variante→número, sem "-"

@@ -1,6 +1,9 @@
 import { WEBUI_BASE_URL } from '$lib/constants';
 import { convertOpenApiToToolPayload } from '$lib/utils';
 import { getOpenAIModelsDirect } from './openai';
+// ClubHub: nome amigável do modelo (ex.: "claude-haiku-4-5" -> "Claude Haiku 4.5").
+// Aplicado na saída de getModels para o seletor, header e mensagens usarem o mesmo nome.
+import { humanVersion } from '$lib/components/chat/ModelSelector/providers';
 
 const TOOL_SERVER_FETCH_TIMEOUT = 10000;
 
@@ -169,7 +172,12 @@ export const getModels = async (
 		models = Object.values(modelsMap);
 	}
 
-	return models;
+	// ClubHub: nome amigável (humanVersion preserva nomes custom com espaço/caixa mista;
+	// só humaniza ids "crus" tipo "claude-haiku-4-5" -> "Claude Haiku 4.5").
+	return models.map((model) => ({
+		...model,
+		name: humanVersion(model)
+	}));
 };
 
 export const unloadModel = async (token: string, model: string) => {

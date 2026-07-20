@@ -554,7 +554,10 @@
 			document.documentElement.style.setProperty('--sidebar-width', `${w}px`);
 		});
 
-		showSidebar.set(!$mobile ? localStorage.sidebar === 'true' : false);
+		// ClubHub: sidebar EXPANDIDA por padrão no desktop. Num iframe novo (sem
+		// localStorage.sidebar) ficava colapsada = tira estreita "estranha". Só colapsa
+		// se o usuário explicitamente escolheu 'false'.
+		showSidebar.set(!$mobile ? (localStorage.sidebar ?? 'true') === 'true' : false);
 
 		const unsubscribers = [
 			mobile.subscribe((value) => {
@@ -1624,6 +1627,11 @@
 										class=" size-7 object-cover rounded-full"
 										alt={$i18n.t('Open User Profile Menu')}
 										aria-label={$i18n.t('Open User Profile Menu')}
+										on:error={(e) => {
+											// ClubHub: a rota de avatar do user exige cookie; no iframe
+											// cross-origin ela dá 401. Cai no avatar padrão público.
+											e.currentTarget.src = `${WEBUI_BASE_URL}/user.png`;
+										}}
 									/>
 
 									{#if $config?.features?.enable_user_status}
