@@ -18,10 +18,13 @@ model_list:
     litellm_params: { model: anthropic/claude-haiku-4-5, api_key: os.environ/ANTHROPIC_API_KEY }
 
   # ── Google Gemini ──
-  - model_name: gemini-2.5-pro
-    litellm_params: { model: gemini/gemini-2.5-pro, api_key: os.environ/GEMINI_API_KEY }
-  - model_name: gemini-2.5-flash
-    litellm_params: { model: gemini/gemini-2.5-flash, api_key: os.environ/GEMINI_API_KEY }
+  # Aliases "-latest": o Google rotaciona a versão por baixo. Versões fixas
+  # (ex. gemini-2.5-*) foram aposentadas para API keys novas em 2026-07 e
+  # voltariam a quebrar a cada ciclo; o alias é imune a isso.
+  - model_name: gemini-pro
+    litellm_params: { model: gemini/gemini-pro-latest, api_key: os.environ/GEMINI_API_KEY }
+  - model_name: gemini-flash
+    litellm_params: { model: gemini/gemini-flash-latest, api_key: os.environ/GEMINI_API_KEY }
 
   # ── DeepSeek ──
   - model_name: deepseek-chat
