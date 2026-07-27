@@ -26,11 +26,12 @@ model_list:
   - model_name: gemini-flash
     litellm_params: { model: gemini/gemini-flash-latest, api_key: os.environ/GEMINI_API_KEY }
 
-  # ── DeepSeek ──
-  - model_name: deepseek-chat
-    litellm_params: { model: deepseek/deepseek-chat, api_key: os.environ/DEEPSEEK_API_KEY }
-  - model_name: deepseek-reasoner
-    litellm_params: { model: deepseek/deepseek-reasoner, api_key: os.environ/DEEPSEEK_API_KEY }
+  # ── DeepSeek — DESATIVADO temporariamente: conta sem créditos ('Insufficient
+  #    Balance', 2026-07-27). Reative descomentando quando houver saldo. ──
+  # - model_name: deepseek-chat
+  #   litellm_params: { model: deepseek/deepseek-chat, api_key: os.environ/DEEPSEEK_API_KEY }
+  # - model_name: deepseek-reasoner
+  #   litellm_params: { model: deepseek/deepseek-reasoner, api_key: os.environ/DEEPSEEK_API_KEY }
 
   # ── Perplexity (busca web) ──
   - model_name: sonar-pro
