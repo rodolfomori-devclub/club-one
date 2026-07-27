@@ -1633,33 +1633,31 @@ except Exception as e:
     log.exception(f'Error loading DEFAULT_PROMPT_SUGGESTIONS: {e}')
     default_prompt_suggestions = []
 if default_prompt_suggestions == []:
+    # ClubHub: sugestões default em pt-BR, voltadas ao aluno DevClub.
     default_prompt_suggestions = [
         {
-            'title': ['Help me study', 'vocabulary for a college entrance exam'],
-            'content': "Help me study vocabulary: write a sentence for me to fill in the blank, and I'll try to pick the correct option.",
+            'title': ['Me explique esse erro', 'cole o erro do seu código'],
+            'content': 'Vou colar um erro que apareceu no meu código. Me explique o que ele significa e como corrigir, passo a passo.',
         },
         {
-            'title': ['Give me ideas', "for what to do with my kids' art"],
-            'content': "What are 5 creative things I could do with my kids' art? I don't want to throw them away, but it's also so much clutter.",
+            'title': ['Revise meu código', 'melhorias pontuais e boas práticas'],
+            'content': 'Vou colar um trecho de código. Revise apontando melhorias pontuais de legibilidade, boas práticas e possíveis bugs — sem reescrever tudo.',
         },
         {
-            'title': ['Tell me a fun fact', 'about the Roman Empire'],
-            'content': 'Tell me a random fun fact about the Roman Empire',
+            'title': ['Explique um conceito', 'de forma simples, com exemplo'],
+            'content': 'Me explique um conceito de programação de forma simples, com um exemplo prático curto em JavaScript. Pode perguntar qual conceito eu quero.',
         },
         {
-            'title': ['Show me a code snippet', "of a website's sticky header"],
-            'content': "Show me a code snippet of a website's sticky header in CSS and JavaScript.",
+            'title': ['Me ajude a estudar', 'com perguntas e correções'],
+            'content': 'Quero estudar um tema de programação. Me faça perguntas, uma de cada vez, e corrija minhas respostas explicando o porquê.',
         },
         {
-            'title': [
-                'Explain options trading',
-                "if I'm familiar with buying and selling stocks",
-            ],
-            'content': "Explain options trading in simple terms if I'm familiar with buying and selling stocks.",
+            'title': ['Simule uma entrevista', 'técnica de programação'],
+            'content': 'Simule uma entrevista técnica para uma vaga de desenvolvedor júnior: faça uma pergunta por vez e me dê feedback das minhas respostas.',
         },
         {
-            'title': ['Overcome procrastination', 'give me tips'],
-            'content': 'Could you start by asking me about instances when I procrastinate the most and then give me some suggestions to overcome it?',
+            'title': ['Monte um plano de estudos', 'para a sua meta na programação'],
+            'content': 'Me ajude a montar um plano de estudos semanal e realista para evoluir na programação. Comece perguntando meu nível atual e minha meta.',
         },
     ]
 

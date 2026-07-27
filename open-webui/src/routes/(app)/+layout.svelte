@@ -319,9 +319,8 @@
 		};
 		setupKeyboardShortcuts();
 
-		if ($user?.role === 'admin' && ($settings?.showChangelog ?? true)) {
-			showChangelog.set($settings?.version !== $config.version);
-		}
+		// ClubHub: sem popup de changelog — as release notes do upstream são em inglês
+		// e não fazem sentido para o produto. Acessível em Configurações > Sobre.
 
 		if ($user?.role === 'admin' || ($user?.permissions?.chat?.temporary ?? true)) {
 			if ($page.url.searchParams.get('temporary-chat') === 'true') {
