@@ -42,7 +42,14 @@ services:
       STORE_MODEL_IN_DB: "True"
       LITELLM_MASTER_KEY: "${LITELLM_MASTER_KEY:-sk-clubhub-master-1234}"
       LITELLM_SALT_KEY: "${LITELLM_SALT_KEY:-sk-clubhub-salt-1234}"
+      # Keys dos providers (vêm do ./.env). ANTHROPIC/DEEPSEEK aceitam também os
+      # apelidos CLAUDE_API_KEY / DEEP_SEEK_API_KEY usados no .env local.
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-${CLAUDE_API_KEY:-}}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY:-${DEEP_SEEK_API_KEY:-}}"
+      PERPLEXITY_API_KEY: "${PERPLEXITY_API_KEY:-}"
+      XAI_API_KEY: "${XAI_API_KEY:-}"
     depends_on:
       litellm-db:
         condition: service_healthy
