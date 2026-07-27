@@ -8,12 +8,18 @@
 services:
   open-webui:
     environment:
-      EXTERNAL_AUTH_ENABLED: "false"
+      # Teste de integração com a área de membros: valida o token CursEduca do iframe
+      # e aplica o gate por grupo (checkMbaGroup) contra a API de membros.
+      EXTERNAL_AUTH_ENABLED: "true"
+      EXTERNAL_AUTH_API_URL: "https://api.membros.devclub.com.br/auth"
       ENABLE_LOGIN_FORM: "true"
       ENABLE_SIGNUP: "true"
       ENABLE_INITIAL_ADMIN_SIGNUP: "true"
       WEBUI_AUTH_COOKIE_SAME_SITE: "lax"
       WEBUI_AUTH_COOKIE_SECURE: "false"
+      # Usa o modelo de embedding já em cache no volume (não bate no HuggingFace no boot).
+      RAG_EMBEDDING_MODEL_AUTO_UPDATE: "false"
+      RAG_RERANKING_MODEL_AUTO_UPDATE: "false"
     volumes:
       - openwebui_preview_data:/app/backend/data
       - ./open-webui/static/static/custom.css:/app/build/static/custom.css:ro
