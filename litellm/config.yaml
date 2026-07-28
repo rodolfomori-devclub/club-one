@@ -21,9 +21,8 @@ model_list:
       api_key: os.environ/OPENAI_API_KEY
       additional_drop_params: ["reasoning_effort"]
 
-  # ── Anthropic (Claude 4.x / 5) ──
-  - model_name: claude-opus-4-8
-    litellm_params: { model: anthropic/claude-opus-4-8, api_key: os.environ/ANTHROPIC_API_KEY }
+  # ── Anthropic ── (só os 2 de melhor custo: Sonnet 5 em promo até 2026-08-31
+  #    e Haiku 4.5. Claude 3.x foi aposentado da API; linha Opus custa $5/$25.)
   - model_name: claude-sonnet-5
     litellm_params: { model: anthropic/claude-sonnet-5, api_key: os.environ/ANTHROPIC_API_KEY }
   - model_name: claude-haiku-4-5
