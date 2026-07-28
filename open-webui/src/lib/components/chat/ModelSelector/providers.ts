@@ -318,12 +318,21 @@ export function buildModelGroups(items: Item[], ctx: BuildCtx = {}): ModelGroups
 		return m ? parseFloat(m[1]) : -1;
 	};
 
+	// Curadoria: modelos "premium" vão pro FIM do grupo (os baratos ficam no
+	// topo, que é o que o aluno vê primeiro). Match por substring do id.
+	const DEMOTED = ['luna', 'claude-sonnet-5'];
+	const demotedOf = (e: VersionEntry): number =>
+		DEMOTED.some((d) => (e.model?.id ?? '').toLowerCase().includes(d)) ? 1 : 0;
+
 	const providers: ProviderGroup[] = [];
 	for (const [pid, entries] of buckets) {
 		entries.sort((a, b) => {
 			const pa = pinned.has(a.value) ? 1 : 0;
 			const pb = pinned.has(b.value) ? 1 : 0;
 			if (pa !== pb) return pb - pa;
+			const da = demotedOf(a);
+			const db = demotedOf(b);
+			if (da !== db) return da - db;
 			return numOf(b) - numOf(a);
 		});
 		providers.push({

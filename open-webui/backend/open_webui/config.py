@@ -1623,7 +1623,8 @@ ENABLE_PASSWORD_AUTH = os.getenv('ENABLE_PASSWORD_AUTH', 'True').lower() == 'tru
 
 DEFAULT_LOCALE = os.getenv('DEFAULT_LOCALE', '')
 
-DEFAULT_MODELS = os.getenv('DEFAULT_MODELS', None)
+# ClubHub: modelo padrão de chat novo = o mais econômico do catálogo.
+DEFAULT_MODELS = os.getenv('DEFAULT_MODELS', 'gpt-5-nano')
 
 DEFAULT_PINNED_MODELS = os.getenv('DEFAULT_PINNED_MODELS', None)
 

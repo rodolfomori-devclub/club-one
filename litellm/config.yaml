@@ -1,23 +1,38 @@
 # LiteLLM proxy — ClubHub (prod). Modelos ATUAIS dos providers; chaves vêm do env
 # (setadas no serviço do Railway). master_key = LITELLM_MASTER_KEY.
 model_list:
-  # ── OpenAI (GPT-5.x — os 4.x/o1 foram aposentados) ──
+  # ── OpenAI ── (curadoria por custo: nanos/minis + Luna como topo do grupo.
   # additional_drop_params reasoning_effort: a OpenAI rejeita tools +
-  # reasoning_effort juntos no /chat/completions dos 5.6; descartando o param,
-  # o modelo usa o esforço default e ferramentas sempre funcionam.
-  - model_name: gpt-5.6-terra
+  # reasoning_effort juntos no /chat/completions dos 5.x; descartando o param,
+  # o modelo usa o esforço default e ferramentas sempre funcionam.)
+  - model_name: gpt-5-nano
     litellm_params:
-      model: openai/gpt-5.6-terra
+      model: openai/gpt-5-nano
+      api_key: os.environ/OPENAI_API_KEY
+      additional_drop_params: ["reasoning_effort"]
+  - model_name: gpt-5.4-nano
+    litellm_params:
+      model: openai/gpt-5.4-nano
+      api_key: os.environ/OPENAI_API_KEY
+      additional_drop_params: ["reasoning_effort"]
+  - model_name: gpt-5-mini
+    litellm_params:
+      model: openai/gpt-5-mini
+      api_key: os.environ/OPENAI_API_KEY
+      additional_drop_params: ["reasoning_effort"]
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+      additional_drop_params: ["reasoning_effort"]
+  - model_name: gpt-4.1-mini
+    litellm_params:
+      model: openai/gpt-4.1-mini
       api_key: os.environ/OPENAI_API_KEY
       additional_drop_params: ["reasoning_effort"]
   - model_name: gpt-5.6-luna
     litellm_params:
       model: openai/gpt-5.6-luna
-      api_key: os.environ/OPENAI_API_KEY
-      additional_drop_params: ["reasoning_effort"]
-  - model_name: gpt-5.4-mini
-    litellm_params:
-      model: openai/gpt-5.4-mini
       api_key: os.environ/OPENAI_API_KEY
       additional_drop_params: ["reasoning_effort"]
 
