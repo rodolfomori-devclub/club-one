@@ -43,14 +43,14 @@ model_list:
   - model_name: claude-haiku-4-5
     litellm_params: { model: anthropic/claude-haiku-4-5, api_key: os.environ/ANTHROPIC_API_KEY }
 
-  # ── Google Gemini ──
-  # Aliases "-latest": o Google rotaciona a versão por baixo. Versões fixas
-  # (ex. gemini-2.5-*) foram aposentadas para API keys novas em 2026-07 e
-  # voltariam a quebrar a cada ciclo; o alias é imune a isso.
-  - model_name: gemini-pro
-    litellm_params: { model: gemini/gemini-pro-latest, api_key: os.environ/GEMINI_API_KEY }
-  - model_name: gemini-flash
-    litellm_params: { model: gemini/gemini-flash-latest, api_key: os.environ/GEMINI_API_KEY }
+  # ── Google Gemini ── (curadoria por custo: só os flash-lite econômicos.
+  # ATENÇÃO: versões fixas do Gemini são aposentadas "para contas novas" a cada
+  # geração (foi o que matou os 2.5 em 2026-07). Se um dia der 404 "no longer
+  # available", trocar aqui pela geração seguinte ou voltar aos aliases -latest.)
+  - model_name: gemini-3.5-flash-lite
+    litellm_params: { model: gemini/gemini-3.5-flash-lite, api_key: os.environ/GEMINI_API_KEY }
+  - model_name: gemini-3.1-flash-lite
+    litellm_params: { model: gemini/gemini-3.1-flash-lite, api_key: os.environ/GEMINI_API_KEY }
 
   # ── DeepSeek — DESATIVADO temporariamente: conta sem créditos ('Insufficient
   #    Balance', 2026-07-27). Reative descomentando quando houver saldo. ──
