@@ -2,12 +2,24 @@
 # (setadas no serviço do Railway). master_key = LITELLM_MASTER_KEY.
 model_list:
   # ── OpenAI (GPT-5.x — os 4.x/o1 foram aposentados) ──
+  # additional_drop_params reasoning_effort: a OpenAI rejeita tools +
+  # reasoning_effort juntos no /chat/completions dos 5.6; descartando o param,
+  # o modelo usa o esforço default e ferramentas sempre funcionam.
   - model_name: gpt-5.6-terra
-    litellm_params: { model: openai/gpt-5.6-terra, api_key: os.environ/OPENAI_API_KEY }
+    litellm_params:
+      model: openai/gpt-5.6-terra
+      api_key: os.environ/OPENAI_API_KEY
+      additional_drop_params: ["reasoning_effort"]
   - model_name: gpt-5.6-luna
-    litellm_params: { model: openai/gpt-5.6-luna, api_key: os.environ/OPENAI_API_KEY }
+    litellm_params:
+      model: openai/gpt-5.6-luna
+      api_key: os.environ/OPENAI_API_KEY
+      additional_drop_params: ["reasoning_effort"]
   - model_name: gpt-5.4-mini
-    litellm_params: { model: openai/gpt-5.4-mini, api_key: os.environ/OPENAI_API_KEY }
+    litellm_params:
+      model: openai/gpt-5.4-mini
+      api_key: os.environ/OPENAI_API_KEY
+      additional_drop_params: ["reasoning_effort"]
 
   # ── Anthropic (Claude 4.x / 5) ──
   - model_name: claude-opus-4-8
