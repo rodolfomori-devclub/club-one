@@ -30,7 +30,7 @@ SELECT 'clubhub_scope_guard',
        $PYFN$"""
 title: ClubHub Scope Guard
 author: DevClub
-version: 1.0.0
+version: 1.1.0
 description: >
   Mantém o ClubHub como assistente de estudo do dia a dia, não como gerador de
   aplicações completas. Detecta pedidos de "projeto inteiro" e, por padrão,
@@ -48,28 +48,42 @@ from pydantic import BaseModel, Field
 
 # Verbo de criação + artefato = pedido de projeto. Grafias erradas são a regra
 # nos dados de produção ("portaolio", "lange page", "fasa"), então os padrões
-# são propositalmente frouxos.
+# são propositalmente frouxos. desenvolv(?!dor): não confundir com o substantivo
+# "desenvolvedor" ("sou desenvolvedor e...").
 _VERBO = (
-    r'(cri[ae]r?|cria|fa[cçz][ae]?r?|fasa|desenvolv[ae]r?|mont[ae]r?|ger[ae]r?|'
-    r'refa[cç]|recri[ae]|build|create|recreate|preciso (de|criar|fazer|montar|iniciar)|'
-    r'quero (um|uma|criar|fazer|montar)|gostaria de (criar|fazer|montar)|me (d[êe]|manda|envia))'
+    r'(cri[ae]r?|cria|fa[cçz][ae]?r?|\bfas\b|fasa|fizer|desenvolv[ae](?!dor)r?|mont[ae]r?|ger[ae]r?|'
+    r'refa[cç]|recri[ae]|clon[ae]r?|estrutur(ar|e)\b|build|create|recreate|'
+    r'preciso (de|criar|fazer|montar|iniciar)|'
+    r'quero (um|uma|criar|fazer|montar|clonar|que voc[êe] (crie|fa[cç]a|gere|monte))|'
+    r'gostaria de (criar|fazer|montar)|me (d[êeáa]r?|manda|envia)|(envi[ae]|mand[ae]) pra mim)'
 )
 _ARTEFATO = (
     r'(site|website|web ?site|port[a-z]{0,3}[oó]?li?o|landing ?page|lange ?page|lading ?page|'
     r'sistema|aplicativo|aplica[cç][aã]o|\bapp\b|plataforma|p[aá]gina (institucional|web|de)|'
-    r'projeto (completo|do zero|institucional)|dashboard|painel administrativo)'
+    r'projeto (completo|do zero|institucional|todo|inteiro)|dashboard|painel administrativo|'
+    r'loja( virtual| online)?|e-?commerce|\bapi\b|\bbot\b|\bjogo\b|\bgame\b|\bblog\b|\bcrud\b|'
+    r'card[aá]pio|simulador|\bstore\b|\bsystem\b|\bo html d[aeo]\b)'
 )
 
-# Sinais de escopo total — hoje servem só como severidade (log/decisão futura),
-# não são exigidos para acionar o guard.
-_ESCOPO_TOTAL = [
+# Sinais INEQUÍVOCOS de "tudo de uma vez". Quando presentes junto do pedido de
+# criação, vencem a precedência de _MANUTENCAO — senão "como criar um site
+# completo?" passaria como dúvida. Só entradas sem duplo sentido: "full stack" e
+# "html+css" flipavam pedidos legítimos de manutenção na amostra real.
+_ESCOPO_OVERRIDE = [
     r'\bcomplet[ao]s?\b',
     r'\binteir[ao]s?\b',
     r'\bdo zero\b',
-    r'\bfull ?stack\b',
     r'\btodas as (p[aá]ginas|se[cç][oõ]es|telas)\b',
-    r'html.{0,40}css',
+    r'\btudo (completo|pronto|de uma vez|junto)\b',
 ]
+
+# Criação POSSESSIVA ("criar meu site", "clonar esse site pra mim") é geração,
+# não manutenção — vence os padrões de artefato-existente de _MANUTENCAO.
+_CRIACAO_POSSESSIVA = re.compile(
+    r'\b(cri[ae]r?\w*|fa[cçz][ae]?r?\w*|desenvolv(?!edor)\w+|mont[ae]r?\w*|clon[ae]r?\w*|refazer)\s+'
+    r'(o\s|um\s|uma\s)?(meu|minha|nosso|nossa)\s+'
+    r'(site|p[oó]?rt[a-z]{0,3}[oó]?li?o|p[aá]gina|projeto|loja|blog|app\b|aplicativo)'
+)
 
 # Conserto, dúvida e estudo — nunca contam como geração de projeto, mesmo que a
 # frase mencione "site". Precede tudo.
@@ -88,7 +102,9 @@ _MANUTENCAO = [
     r'\bme ensina',
     r'\bqual (a|o|é)\b',
     r'\bd[êe] ?(me)? ?(dicas|ideias|sugest)',
-    r'\bmelhor[ae]?(r|ia|ias)?\b',
+    # Só as formas VERBAIS de melhorar: o padrão antigo casava o adjetivo nu
+    # "melhor" e desativava o guard em frases como "quem melhor fizer a página".
+    r'\bmelhor(e|a|em|ar|ando|ia|ias)\b',
     r'\banalis[ae]',
     # Artefato que já existe → é modificação, não geração de projeto novo.
     r'\batualiza[cçõ]?[aã]?o?\b',
@@ -175,13 +191,24 @@ class Filter:
     def _pede_projeto_inteiro(self, texto: str) -> bool:
         t = texto.lower()
 
-        # Manutenção/dúvida nunca conta como geração de projeto.
+        # Verbo de criação perto de um artefato (até ~60 chars entre eles).
+        pede = bool(re.search(rf'{_VERBO}.{{0,60}}{_ARTEFATO}', t))
+
+        # Escopo total explícito ("completo", "do zero") vence a checagem de
+        # manutenção — senão "como criar um site completo?" passaria como dúvida.
+        if pede and any(re.search(p, t) for p in _ESCOPO_OVERRIDE):
+            return True
+
+        # "criar meu site" é geração, mesmo com possessivo (que normalmente
+        # indicaria artefato existente em _MANUTENCAO).
+        if _CRIACAO_POSSESSIVA.search(t):
+            return True
+
+        # Manutenção/dúvida sem escopo total: não é geração de projeto.
         if any(re.search(p, t) for p in _MANUTENCAO):
             return False
 
-        # Verbo de criação perto de um artefato (até ~60 chars entre eles) já basta:
-        # "faz um site de barbearia" é exatamente o comportamento a ser fatiado.
-        return bool(re.search(rf'{_VERBO}.{{0,60}}{_ARTEFATO}', t))
+        return pede
 
     def inlet(self, body: dict, __user__: Optional[dict] = None) -> dict:
         if not self.valves.enabled:
