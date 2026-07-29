@@ -1,7 +1,7 @@
 """
 title: ClubHub Scope Guard
 author: DevClub
-version: 1.1.0
+version: 1.2.0
 description: >
   Mantém o ClubHub como assistente de estudo do dia a dia, não como gerador de
   aplicações completas. Detecta pedidos de "projeto inteiro" e, por padrão,
@@ -48,6 +48,24 @@ _ESCOPO_OVERRIDE = [
     r'\btudo (completo|pronto|de uma vez|junto)\b',
 ]
 
+# INSISTÊNCIA pós-plano ("agora me manda tudo de uma vez"). Caso real de prod
+# (2026-07-29 13:17): "agora me made toda a estructura completa" rendeu 232k
+# chars. São sinais absolutos — disparam sozinhos, sem exigir verbo+artefato.
+_INSISTENCIA_TOTAL = [
+    r'\btudo de uma vez\b',
+    r'\bsem dividir( em partes)?\b',
+    r'\bmanda tudo\b',
+    r'\bme d[aáêe] tudo\b',
+    r'\btudo (completo|pronto|junto)\b',
+]
+
+# "estrutura completa", "projeto todo", "site inteiro" — substantivo+totalidade
+# conta como pedido mesmo sem verbo de criação (típico de follow-up).
+_TOTALIDADE = (
+    r'\b(projeto|site|sistema|c[oó]digo|estruc?tura|p[aá]gina|aplica[cç][aã]o|app|landing ?page)s? '
+    r'(tod[ao]s?|inteir[ao]s?|complet[ao]s?)\b'
+)
+
 # Criação POSSESSIVA ("criar meu site", "clonar esse site pra mim") é geração,
 # não manutenção — vence os padrões de artefato-existente de _MANUTENCAO.
 _CRIACAO_POSSESSIVA = re.compile(
@@ -73,6 +91,10 @@ _MANUTENCAO = [
     r'\bme ensina',
     r'\bqual (a|o|é)\b',
     r'\bd[êe] ?(me)? ?(dicas|ideias|sugest)',
+    # Pedir recomendação ou requisitos é consultoria/planejamento, não dump de
+    # código — ambos apareceram como falso positivo no tráfego real de 29/07.
+    r'\brecomend',
+    r'\brequisitos?\b',
     # Só as formas VERBAIS de melhorar: o padrão antigo casava o adjetivo nu
     # "melhor" e desativava o guard em frases como "quem melhor fizer a página".
     r'\bmelhor(e|a|em|ar|ando|ia|ias)\b',
@@ -162,8 +184,13 @@ class Filter:
     def _pede_projeto_inteiro(self, texto: str) -> bool:
         t = texto.lower()
 
-        # Verbo de criação perto de um artefato (até ~60 chars entre eles).
-        pede = bool(re.search(rf'{_VERBO}.{{0,60}}{_ARTEFATO}', t))
+        # Insistência absoluta ("tudo de uma vez") dispara sozinha.
+        if any(re.search(p, t) for p in _INSISTENCIA_TOTAL):
+            return True
+
+        # Verbo de criação perto de um artefato (até ~60 chars entre eles),
+        # ou substantivo+totalidade ("toda a estrutura completa") de follow-up.
+        pede = bool(re.search(rf'{_VERBO}.{{0,60}}{_ARTEFATO}', t)) or bool(re.search(_TOTALIDADE, t))
 
         # Escopo total explícito ("completo", "do zero") vence a checagem de
         # manutenção — senão "como criar um site completo?" passaria como dúvida.
