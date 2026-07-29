@@ -1653,8 +1653,8 @@ if default_prompt_suggestions == []:
             'content': 'Quero estudar um tema de programação. Me faça perguntas, uma de cada vez, e corrija minhas respostas explicando o porquê.',
         },
         {
-            'title': ['Construir por partes', 'uma seção do seu projeto por vez'],
-            'content': 'Quero construir uma parte do meu projeto. Comece perguntando qual seção eu quero fazer agora, entregue só ela funcionando e me explique as decisões antes de seguir para a próxima.',
+            'title': ['Me guie no meu projeto', 'você escreve, o ClubHub orienta'],
+            'content': 'Estou construindo um projeto para praticar. Não escreva o código por mim: me guie por etapas — diga o que decidir e estudar em cada uma, faça perguntas, e revise o código que EU escrever.',
         },
         {
             'title': ['Simule uma entrevista', 'técnica de programação'],
