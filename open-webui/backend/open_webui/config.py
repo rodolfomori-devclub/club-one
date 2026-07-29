@@ -1653,6 +1653,10 @@ if default_prompt_suggestions == []:
             'content': 'Quero estudar um tema de programação. Me faça perguntas, uma de cada vez, e corrija minhas respostas explicando o porquê.',
         },
         {
+            'title': ['Construir por partes', 'uma seção do seu projeto por vez'],
+            'content': 'Quero construir uma parte do meu projeto. Comece perguntando qual seção eu quero fazer agora, entregue só ela funcionando e me explique as decisões antes de seguir para a próxima.',
+        },
+        {
             'title': ['Simule uma entrevista', 'técnica de programação'],
             'content': 'Simule uma entrevista técnica para uma vaga de desenvolvedor júnior: faça uma pergunta por vez e me dê feedback das minhas respostas.',
         },
