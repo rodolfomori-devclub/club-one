@@ -40,8 +40,21 @@ model_list:
   #    saiu em 2026-07-28: a $3/$15 custa 3x o Haiku, e nos dados de produção
   #    o Sonnet 4.5 gastou mais que o Haiku com 2,6x menos respostas.
   #    Claude 3.x foi aposentado da API; linha Opus custa $5/$25.)
+  #
+  # cache_control_injection_points: prompt caching automático. Breakpoint na
+  # última mensagem de cada request → o prefixo (system + histórico) vira cache
+  # incremental: leitura a 0,1x do preço de entrada, escrita só do sufixo novo
+  # a 1,25x. Motivação (2026-07-29): 14M tokens de entrada num único dia, média
+  # de 173k por resposta, cache_read=0 — o histórico inteiro reenviado a preço
+  # cheio a cada turno. Mínimo cacheável do Haiku 4.5 = 4096 tokens, então
+  # conversas curtas não cacheiam (sem custo extra; a marca é ignorada).
   - model_name: claude-haiku-4-5
-    litellm_params: { model: anthropic/claude-haiku-4-5, api_key: os.environ/ANTHROPIC_API_KEY }
+    litellm_params:
+      model: anthropic/claude-haiku-4-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+      cache_control_injection_points:
+        - location: message
+          index: -1
 
   # ── Google Gemini ── (curadoria por custo: só os flash-lite econômicos.
   # ATENÇÃO: versões fixas do Gemini são aposentadas "para contas novas" a cada
