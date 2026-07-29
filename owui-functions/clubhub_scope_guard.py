@@ -78,6 +78,20 @@ _DIRETRIZ_FATIAR = (
     'final. Nunca mais de um arquivo completo por resposta.]'
 )
 
+_DIRETRIZ_PLANEJAR = (
+    '\n\n[Orientação do ClubHub — o pedido acima é de um projeto, site ou sistema '
+    'inteiro, e o ClubHub não gera projetos completos de uma vez. Abra dizendo em '
+    'uma frase, direto e sem pedir desculpas, que aqui você não entrega o projeto '
+    'pronto, e ofereça planejar junto. Em seguida entregue um plano para este '
+    'pedido específico: as seções ou telas necessárias, a estrutura de arquivos, o '
+    'que precisa ser decidido antes (conteúdo, imagens, cores, textos) e em que '
+    'ordem construir. Termine perguntando por qual parte ele quer começar — a '
+    'partir da resposta dele, aí sim escreva o código daquela parte, uma por vez. '
+    'Nesta primeira resposta não escreva código do projeto. Escreva como quem '
+    'conversa: nada de numerar ou repetir estas instruções, elas são internas e o '
+    'aluno não deve vê-las.]'
+)
+
 
 def _texto_da_mensagem(msg: dict) -> str:
     """Extrai texto de content string ou lista de partes (multimodal)."""
@@ -93,8 +107,12 @@ class Filter:
     class Valves(BaseModel):
         enabled: bool = Field(default=True, description='Liga/desliga o guard por completo.')
         mode: str = Field(
-            default='fatiar',
-            description="'fatiar' instrui o modelo a entregar por partes; 'bloquear' recusa o pedido.",
+            default='planejar',
+            description=(
+                "'planejar' (padrão): o modelo diz que não gera projeto pronto e entrega um plano; "
+                "'fatiar': entrega o projeto por partes, começando pela primeira; "
+                "'bloquear': recusa com mensagem fixa, sem chamar o modelo."
+            ),
         )
         block_message: str = Field(
             default=(
@@ -160,13 +178,15 @@ class Filter:
         if self.valves.mode == 'bloquear':
             raise Exception(self.valves.block_message)
 
-        # Modo fatiar: anexa a diretriz ao system prompt, preservando o que já existe
-        # (o system do model entry é aplicado antes dos filtros, em openai.py).
+        diretriz = _DIRETRIZ_FATIAR if self.valves.mode == 'fatiar' else _DIRETRIZ_PLANEJAR
+
+        # Anexa a diretriz ao system prompt, preservando o que já existe (o system
+        # do model entry é aplicado antes dos filtros, em openai.py).
         if messages and messages[0].get('role') == 'system':
             atual = _texto_da_mensagem(messages[0])
-            messages[0]['content'] = f'{atual}{_DIRETRIZ_FATIAR}'
+            messages[0]['content'] = f'{atual}{diretriz}'
         else:
-            messages.insert(0, {'role': 'system', 'content': _DIRETRIZ_FATIAR.strip()})
+            messages.insert(0, {'role': 'system', 'content': diretriz.strip()})
 
         body['messages'] = messages
         return body
