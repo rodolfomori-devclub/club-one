@@ -320,7 +320,7 @@ export function buildModelGroups(items: Item[], ctx: BuildCtx = {}): ModelGroups
 
 	// Curadoria: modelos "premium" vão pro FIM do grupo (os baratos ficam no
 	// topo, que é o que o aluno vê primeiro). Match por substring do id.
-	const DEMOTED = ['luna', 'claude-sonnet-5'];
+	const DEMOTED = ['luna'];
 	const demotedOf = (e: VersionEntry): number =>
 		DEMOTED.some((d) => (e.model?.id ?? '').toLowerCase().includes(d)) ? 1 : 0;
 
